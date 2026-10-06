@@ -1,0 +1,37 @@
+-- Beyond the Title | initial Supabase schema
+create extension if not exists pgcrypto;
+create extension if not exists vector;
+create table if not exists public.profiles (id uuid primary key references auth.users(id) on delete cascade, full_name text, role text not null default 'candidate' check (role in ('candidate','employer','admin')), city text, headline text, skills text[], created_at timestamptz default now());
+create table if not exists public.knowledge (id uuid primary key default gen_random_uuid(), title text not null, category text not null, body text not null, status text not null default 'draft' check(status in ('draft','approved','paused')), created_by uuid references auth.users(id), created_at timestamptz default now(), updated_at timestamptz default now());
+create table if not exists public.knowledge_chunks (id uuid primary key default gen_random_uuid(), knowledge_id uuid not null references public.knowledge(id) on delete cascade, content text not null, embedding vector(1536));
+create table if not exists public.jobs (id uuid primary key default gen_random_uuid(), employer_id uuid references auth.users(id), title text not null, company text not null, location text, description text, requirements text, status text not null default 'draft' check(status in ('draft','published','closed')), created_at timestamptz default now());
+create table if not exists public.courses (id uuid primary key default gen_random_uuid(), title text not null, description text, url text, status text default 'draft', created_at timestamptz default now());
+create table if not exists public.cv_reports (id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id), file_path text, analysis jsonb, created_at timestamptz default now());
+create table if not exists public.applications (id uuid primary key default gen_random_uuid(), job_id uuid references public.jobs(id), user_id uuid references auth.users(id), status text default 'submitted', created_at timestamptz default now(), unique(job_id,user_id));
+create or replace function public.is_admin() returns boolean language sql stable security definer set search_path=public as $$select exists(select 1 from public.profiles where id=(select auth.uid()) and role='admin')$$;
+alter table public.profiles enable row level security;
+alter table public.knowledge enable row level security;
+alter table public.knowledge_chunks enable row level security;
+alter table public.jobs enable row level security;
+alter table public.courses enable row level security;
+alter table public.cv_reports enable row level security;
+alter table public.applications enable row level security;
+create policy "profile read own or admin" on public.profiles for select to authenticated using (id=(select auth.uid()) or public.is_admin());
+create policy "profile insert own candidate" on public.profiles for insert to authenticated with check (id=(select auth.uid()) and role='candidate');
+create policy "profile update own non admin" on public.profiles for update to authenticated using (id=(select auth.uid()) and role <> 'admin') with check (id=(select auth.uid()) and role='candidate');
+create policy "approved knowledge public read" on public.knowledge for select to anon,authenticated using (status='approved' or public.is_admin());
+create policy "knowledge admin insert" on public.knowledge for insert to authenticated with check(public.is_admin());
+create policy "knowledge admin update" on public.knowledge for update to authenticated using(public.is_admin()) with check(public.is_admin());
+create policy "knowledge admin delete" on public.knowledge for delete to authenticated using(public.is_admin());
+create policy "knowledge chunks admin" on public.knowledge_chunks for all to authenticated using(public.is_admin()) with check(public.is_admin());
+create policy "jobs public published" on public.jobs for select to anon,authenticated using(status='published' or public.is_admin() or employer_id=(select auth.uid()));
+create policy "jobs employer insert" on public.jobs for insert to authenticated with check(employer_id=(select auth.uid()) or public.is_admin());
+create policy "jobs employer update" on public.jobs for update to authenticated using(employer_id=(select auth.uid()) or public.is_admin()) with check(employer_id=(select auth.uid()) or public.is_admin());
+create policy "courses public" on public.courses for select to anon,authenticated using(status='published' or public.is_admin());
+create policy "courses admin" on public.courses for all to authenticated using(public.is_admin()) with check(public.is_admin());
+create policy "reports private" on public.cv_reports for select to authenticated using(user_id=(select auth.uid()) or public.is_admin());
+create policy "reports insert own" on public.cv_reports for insert to authenticated with check(user_id=(select auth.uid()));
+create policy "applications own" on public.applications for select to authenticated using(user_id=(select auth.uid()) or public.is_admin() or exists(select 1 from public.jobs where jobs.id=job_id and jobs.employer_id=(select auth.uid())));
+create policy "applications own insert" on public.applications for insert to authenticated with check(user_id=(select auth.uid()));
+-- Assign admin only from Supabase SQL editor, never from client:
+-- update public.profiles set role='admin' where id='<YOUR_AUTH_USER_UUID>';
