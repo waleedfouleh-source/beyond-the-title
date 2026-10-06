@@ -10,7 +10,7 @@ async function hubOpen(){
   const {data:{user},error}=await db.auth.getUser();
   if(error||!user){p.innerHTML+='<div class="form"><input id="hubEmail" type="email" placeholder="البريد الإلكتروني"><input id="hubPass" type="password" placeholder="كلمة المرور"><button class="primary" onclick="hubLogin()">دخول مرام</button></div>';return}
   const {data:profile}=await db.from('profiles').select('role').eq('id',user.id).single();
-  if(profile?.role!=='admin'){document.getElementById('hubStatus').textContent='هذه اللوحة متاحة للمسؤول المعتمد فقط.';return}
+  if(!['admin','knowledge_manager'].includes(profile?.role)){document.getElementById('hubStatus').textContent='هذه اللوحة متاحة للمسؤول المعتمد فقط.';return}
   document.getElementById('hubArea').innerHTML='<div class="form"><input id="kTitle" placeholder="عنوان المعرفة"><select id="kCategory"><option value="cv">السيرة الذاتية</option><option value="interview">المقابلات</option><option value="development">التطوير والتدريب</option><option value="recruitment">التوظيف</option><option value="other">أخرى</option></select><textarea id="kBody" rows="6" placeholder="اكتبي خبرتك وتوجيهاتك المهنية"></textarea><button class="primary" onclick="hubSave()">حفظ كمسودة</button><div id="hubMessage" role="status"></div></div><h3>المواد المعرفية</h3><div id="hubList"></div><button class="secondary" onclick="hubLogout()">تسجيل الخروج</button>';
   hubRefresh();
 }
