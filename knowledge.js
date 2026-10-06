@@ -1,6 +1,7 @@
 /* Knowledge Hub: admin-only writes via Supabase RLS. */
 const BTT = window.BTT_CONFIG || {};
 const db = BTT.supabaseUrl && BTT.supabaseAnonKey && window.supabase ? window.supabase.createClient(BTT.supabaseUrl,BTT.supabaseAnonKey) : null;
+window.db=db;
 const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function hubOpen(){
   openPanel('admin');
