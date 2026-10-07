@@ -139,12 +139,13 @@
         '<button class="primary" id="authSubmit" type="submit">' + (signup ? 'إنشاء الحساب' : 'تسجيل الدخول') + '</button>' +
       '</form>' +
       '<p id="authStatus" class="status"></p>' +
-      (signup ? '<button class="secondary fullBtn" id="resendButton" type="button">إعادة إرسال رابط التأكيد</button>' : '') +
+      (signup ? '<button class="secondary fullBtn" id="resendButton" type="button">إعادة إرسال رابط التأكيد</button>' : '<button class="secondary fullBtn" id="forgotPasswordButton" type="button">نسيت كلمة المرور؟</button>') +
       '<button class="secondary fullBtn" id="authSwitch" type="button">' + (signup ? 'عندي حساب بالفعل' : 'إنشاء حساب جديد') + '</button>'
     );
 
     $('authSwitch').onclick = () => renderAuth(signup ? 'login' : 'signup', state.afterAuth);
     if (signup) $('resendButton').onclick = resendConfirmation;
+    else $('forgotPasswordButton').onclick = () => renderForgotPassword($('authEmail')?.value.trim() || '');
     $('authForm').onsubmit = submitAuth;
   }
 
@@ -204,6 +205,92 @@
     status('authStatus', error ? errText(error) : 'تم إرسال رابط التأكيد. افحص الوارد والرسائل غير المرغوب فيها.', error ? 'error' : 'ok');
   }
 
+
+  function recoveryRedirectUrl() {
+    const base = cfg.siteUrl || (location.origin + location.pathname);
+    try {
+      const url = new URL(base, location.href);
+      url.searchParams.set('mode', 'recovery');
+      return url.toString();
+    } catch {
+      return base;
+    }
+  }
+
+  function renderForgotPassword(prefill = '') {
+    show(
+      '<span class="eyebrow">استعادة الحساب</span><h2>نسيت كلمة المرور؟</h2>' +
+      '<p>أدخل بريد الحساب وسنرسل لك رابطًا آمنًا لتعيين كلمة مرور جديدة.</p>' +
+      '<form class="form" id="forgotPasswordForm">' +
+        '<input id="recoveryEmail" type="email" autocomplete="email" required placeholder="البريد الإلكتروني" value="' + esc(prefill) + '">' +
+        '<button class="primary" id="recoverySend" type="submit">إرسال رابط تغيير كلمة المرور</button>' +
+      '</form>' +
+      '<p id="recoveryStatus" class="status"></p>' +
+      '<button class="secondary fullBtn" type="button" onclick="openPanel(\'auth-login\')">العودة لتسجيل الدخول</button>'
+    );
+    $('forgotPasswordForm').onsubmit = requestPasswordReset;
+  }
+
+  async function requestPasswordReset(e) {
+    e?.preventDefault();
+    if (!db) return status('recoveryStatus', 'الاتصال بقاعدة البيانات غير متاح.', 'error');
+    const email = $('recoveryEmail')?.value.trim();
+    if (!email) return status('recoveryStatus', 'أدخل البريد الإلكتروني.', 'error');
+    const btn = $('recoverySend');
+    if (btn) btn.disabled = true;
+    status('recoveryStatus', 'جاري إرسال رابط الاستعادة...');
+
+    try {
+      const { error } = await db.auth.resetPasswordForEmail(email, {
+        redirectTo: recoveryRedirectUrl()
+      });
+      if (error) throw error;
+      status('recoveryStatus', 'تم إرسال طلب الاستعادة. افحص الوارد وSpam/Junk. قد يستغرق البريد دقيقة أو دقيقتين.', 'ok');
+    } catch (error) {
+      status('recoveryStatus', errText(error), 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function renderPasswordUpdate() {
+    show(
+      '<span class="eyebrow">تعيين كلمة مرور جديدة</span><h2>اختر كلمة مرور جديدة</h2>' +
+      '<p>اكتب كلمة المرور الجديدة مرتين ثم احفظها.</p>' +
+      '<form class="form" id="passwordUpdateForm">' +
+        '<input id="newPassword" type="password" autocomplete="new-password" minlength="8" required placeholder="كلمة المرور الجديدة (8 أحرف على الأقل)">' +
+        '<input id="newPasswordConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="تأكيد كلمة المرور الجديدة">' +
+        '<button class="primary" id="passwordUpdateButton" type="submit">حفظ كلمة المرور الجديدة</button>' +
+      '</form><p id="passwordUpdateStatus" class="status"></p>'
+    );
+    $('passwordUpdateForm').onsubmit = updatePassword;
+  }
+
+  async function updatePassword(e) {
+    e.preventDefault();
+    const p1 = $('newPassword').value;
+    const p2 = $('newPasswordConfirm').value;
+    if (p1.length < 8) return status('passwordUpdateStatus', 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.', 'error');
+    if (p1 !== p2) return status('passwordUpdateStatus', 'كلمتا المرور غير متطابقتين.', 'error');
+
+    const btn = $('passwordUpdateButton');
+    btn.disabled = true;
+    status('passwordUpdateStatus', 'جاري تحديث كلمة المرور...');
+    const { error } = await db.auth.updateUser({ password: p1 });
+    btn.disabled = false;
+
+    if (error) return status('passwordUpdateStatus', errText(error), 'error');
+    status('passwordUpdateStatus', 'تم تغيير كلمة المرور بنجاح. يمكنك استخدام كلمة المرور الجديدة من الآن.', 'ok');
+
+    try {
+      const url = new URL(location.href);
+      url.searchParams.delete('mode');
+      history.replaceState({}, document.title, url.pathname + url.search);
+    } catch {}
+
+    setTimeout(() => openPanel('account'), 900);
+  }
+
   async function signOut() {
     if (db) await db.auth.signOut();
     state.user = null;
@@ -228,6 +315,7 @@
         (role !== 'consultant' ? '<button class="secondary" onclick="openPanel(\'profile\')">الملف المهني</button>' : '') +
         '<button class="secondary" onclick="openPanel(\'jobs\')">الوظائف</button>' +
         '<button class="secondary" onclick="openPanel(\'advisor\')">مستشار مرام</button>' +
+        '<button class="secondary" onclick="bttSendOwnPasswordReset()">إرسال رابط تغيير كلمة المرور إلى بريدي</button>' +
         '<button class="dangerBtn" onclick="bttSignOut()">تسجيل الخروج</button>' +
       '</div>'
     );
@@ -904,6 +992,8 @@
       'auth-signup': () => renderAuth('signup'),
       'signup': () => renderAuth('signup'),
       'login': () => renderAuth('login'),
+      'forgot-password': () => renderForgotPassword(''),
+      'password-update': renderPasswordUpdate,
       'account': renderAccount,
       'profile': renderProfile,
       'upload': renderUpload,
@@ -930,6 +1020,10 @@
   window.bttFeedbackStatus = feedbackStatus;
   window.bttKnowledgeStatus = knowledgeStatus;
   window.bttCompanyStatus = companyStatus;
+  window.bttSendOwnPasswordReset = async function() {
+    if (!(await requireAuth('account'))) return;
+    renderForgotPassword(state.user?.email || '');
+  };
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closePanel();
@@ -942,9 +1036,19 @@
         state.profile = null;
         state.latestReport = null;
       }
+      if (event === 'PASSWORD_RECOVERY') {
+        setTimeout(renderPasswordUpdate, 0);
+      }
       setTimeout(loadSession, 0);
     });
   }
 
-  loadSession();
+  (async () => {
+    await loadSession();
+    const recoveryMode = new URLSearchParams(location.search).get('mode') === 'recovery' ||
+      location.hash.includes('type=recovery');
+    if (recoveryMode) {
+      setTimeout(renderPasswordUpdate, 250);
+    }
+  })();
 })();
