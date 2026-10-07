@@ -104,7 +104,7 @@ create table if not exists public.applications (
   unique(job_id,user_id)
 );
 
-create or replace function public.is_admin()
+create or replace function private.is_admin()
 returns boolean
 language sql
 stable
@@ -130,10 +130,10 @@ as $$
   )
 $$;
 
-revoke all on function public.is_admin() from public, anon;
+revoke all on function private.is_admin() from public, anon;
 grant usage on schema private to authenticated;
 revoke all on function private.is_consultant() from public, anon;
-grant execute on function public.is_admin() to authenticated;
+grant execute on function private.is_admin() to authenticated;
 grant execute on function private.is_consultant() to authenticated;
 
 create or replace function private.handle_new_auth_user()
@@ -206,7 +206,7 @@ grant select,insert,update,delete on public.applications to authenticated;
 
 create policy "profile read own or admin"
 on public.profiles for select to authenticated
-using (id=(select auth.uid()) or public.is_admin());
+using (id=(select auth.uid()) or private.is_admin());
 
 create policy "profile insert own candidate"
 on public.profiles for insert to authenticated
@@ -219,8 +219,8 @@ with check (id=(select auth.uid()) and role='candidate');
 
 create policy "profile admin update"
 on public.profiles for update to authenticated
-using (public.is_admin())
-with check (public.is_admin());
+using (private.is_admin())
+with check (private.is_admin());
 
 create policy "approved knowledge public read"
 on public.knowledge for select to anon,authenticated
@@ -228,24 +228,24 @@ using (status='approved');
 
 create policy "knowledge admin read"
 on public.knowledge for select to authenticated
-using (public.is_admin());
+using (private.is_admin());
 
 create policy "knowledge admin insert"
 on public.knowledge for insert to authenticated
 with check (
-  public.is_admin()
+  private.is_admin()
   and created_by=(select auth.uid())
   and source_role='admin'
 );
 
 create policy "knowledge admin update"
 on public.knowledge for update to authenticated
-using (public.is_admin())
-with check (public.is_admin());
+using (private.is_admin())
+with check (private.is_admin());
 
 create policy "knowledge admin delete"
 on public.knowledge for delete to authenticated
-using (public.is_admin());
+using (private.is_admin());
 
 create policy "knowledge consultant read own"
 on public.knowledge for select to authenticated
@@ -287,14 +287,14 @@ using (
 
 create policy "knowledge chunks admin"
 on public.knowledge_chunks for all to authenticated
-using (public.is_admin())
-with check (public.is_admin());
+using (private.is_admin())
+with check (private.is_admin());
 
 create policy "consultant feedback read own or admin"
 on public.consultant_feedback for select to authenticated
 using (
   consultant_id=(select auth.uid())
-  or public.is_admin()
+  or private.is_admin()
 );
 
 create policy "consultant feedback consultant insert"
@@ -307,12 +307,12 @@ with check (
 
 create policy "consultant feedback admin update"
 on public.consultant_feedback for update to authenticated
-using (public.is_admin())
-with check (public.is_admin());
+using (private.is_admin())
+with check (private.is_admin());
 
 create policy "consultant feedback admin delete"
 on public.consultant_feedback for delete to authenticated
-using (public.is_admin());
+using (private.is_admin());
 
 create policy "jobs public published"
 on public.jobs for select to anon,authenticated
@@ -322,32 +322,32 @@ create policy "jobs owner or admin read"
 on public.jobs for select to authenticated
 using (
   employer_id=(select auth.uid())
-  or public.is_admin()
+  or private.is_admin()
 );
 
 create policy "jobs employer insert"
 on public.jobs for insert to authenticated
 with check (
   employer_id=(select auth.uid())
-  or public.is_admin()
+  or private.is_admin()
 );
 
 create policy "jobs employer update"
 on public.jobs for update to authenticated
 using (
   employer_id=(select auth.uid())
-  or public.is_admin()
+  or private.is_admin()
 )
 with check (
   employer_id=(select auth.uid())
-  or public.is_admin()
+  or private.is_admin()
 );
 
 create policy "jobs employer delete"
 on public.jobs for delete to authenticated
 using (
   employer_id=(select auth.uid())
-  or public.is_admin()
+  or private.is_admin()
 );
 
 create policy "courses public"
@@ -356,14 +356,14 @@ using (status='published');
 
 create policy "courses admin"
 on public.courses for all to authenticated
-using (public.is_admin())
-with check (public.is_admin());
+using (private.is_admin())
+with check (private.is_admin());
 
 create policy "reports private"
 on public.cv_reports for select to authenticated
 using (
   user_id=(select auth.uid())
-  or public.is_admin()
+  or private.is_admin()
 );
 
 create policy "reports insert own"
@@ -374,7 +374,7 @@ create policy "applications own"
 on public.applications for select to authenticated
 using (
   user_id=(select auth.uid())
-  or public.is_admin()
+  or private.is_admin()
   or exists(
     select 1 from public.jobs
     where jobs.id=job_id
@@ -420,7 +420,7 @@ alter table public.advisor_messages enable row level security;
 grant select,insert on public.advisor_messages to authenticated;
 drop policy if exists "advisor own read" on public.advisor_messages;
 create policy "advisor own read" on public.advisor_messages for select to authenticated
-using (user_id=(select auth.uid()) or public.is_admin());
+using (user_id=(select auth.uid()) or private.is_admin());
 drop policy if exists "advisor own insert" on public.advisor_messages;
 create policy "advisor own insert" on public.advisor_messages for insert to authenticated
 with check (user_id=(select auth.uid()));
@@ -445,10 +445,10 @@ create policy "company request public insert" on public.company_requests for ins
 with check (status='new');
 drop policy if exists "company request admin read" on public.company_requests;
 create policy "company request admin read" on public.company_requests for select to authenticated
-using (public.is_admin());
+using (private.is_admin());
 drop policy if exists "company request admin update" on public.company_requests;
 create policy "company request admin update" on public.company_requests for update to authenticated
-using (public.is_admin()) with check (public.is_admin());
+using (private.is_admin()) with check (private.is_admin());
 
 create or replace function private.is_employer()
 returns boolean language sql stable security definer set search_path=public as $$
@@ -459,14 +459,14 @@ grant execute on function private.is_employer() to authenticated;
 
 drop policy if exists "jobs employer insert" on public.jobs;
 create policy "jobs employer insert" on public.jobs for insert to authenticated
-with check (public.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
+with check (private.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
 drop policy if exists "jobs employer update" on public.jobs;
 create policy "jobs employer update" on public.jobs for update to authenticated
-using (public.is_admin() or (private.is_employer() and employer_id=(select auth.uid())))
-with check (public.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
+using (private.is_admin() or (private.is_employer() and employer_id=(select auth.uid())))
+with check (private.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
 drop policy if exists "jobs employer delete" on public.jobs;
 create policy "jobs employer delete" on public.jobs for delete to authenticated
-using (public.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
+using (private.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
 
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values ('cv-files','cv-files',false,5242880,array[
