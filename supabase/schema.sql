@@ -117,7 +117,7 @@ as $$
   )
 $$;
 
-create or replace function public.is_consultant()
+create or replace function private.is_consultant()
 returns boolean
 language sql
 stable
@@ -131,9 +131,10 @@ as $$
 $$;
 
 revoke all on function public.is_admin() from public, anon;
-revoke all on function public.is_consultant() from public, anon;
+grant usage on schema private to authenticated;
+revoke all on function private.is_consultant() from public, anon;
 grant execute on function public.is_admin() to authenticated;
-grant execute on function public.is_consultant() to authenticated;
+grant execute on function private.is_consultant() to authenticated;
 
 create or replace function private.handle_new_auth_user()
 returns trigger
@@ -249,14 +250,14 @@ using (public.is_admin());
 create policy "knowledge consultant read own"
 on public.knowledge for select to authenticated
 using (
-  public.is_consultant()
+  private.is_consultant()
   and created_by=(select auth.uid())
 );
 
 create policy "knowledge consultant insert draft"
 on public.knowledge for insert to authenticated
 with check (
-  public.is_consultant()
+  private.is_consultant()
   and created_by=(select auth.uid())
   and status='draft'
   and source_role='consultant'
@@ -265,12 +266,12 @@ with check (
 create policy "knowledge consultant update own draft"
 on public.knowledge for update to authenticated
 using (
-  public.is_consultant()
+  private.is_consultant()
   and created_by=(select auth.uid())
   and status='draft'
 )
 with check (
-  public.is_consultant()
+  private.is_consultant()
   and created_by=(select auth.uid())
   and status='draft'
   and source_role='consultant'
@@ -279,7 +280,7 @@ with check (
 create policy "knowledge consultant delete own draft"
 on public.knowledge for delete to authenticated
 using (
-  public.is_consultant()
+  private.is_consultant()
   and created_by=(select auth.uid())
   and status='draft'
 );
@@ -300,7 +301,7 @@ create policy "consultant feedback consultant insert"
 on public.consultant_feedback for insert to authenticated
 with check (
   consultant_id=(select auth.uid())
-  and public.is_consultant()
+  and private.is_consultant()
   and status='new'
 );
 
@@ -384,6 +385,15 @@ using (
 create policy "applications own insert"
 on public.applications for insert to authenticated
 with check (user_id=(select auth.uid()));
+
+create index if not exists idx_consultant_feedback_consultant_id
+  on public.consultant_feedback(consultant_id);
+create index if not exists idx_consultant_feedback_reviewed_by
+  on public.consultant_feedback(reviewed_by);
+create index if not exists idx_knowledge_created_by
+  on public.knowledge(created_by);
+create index if not exists idx_knowledge_approved_by
+  on public.knowledge(approved_by);
 
 -- IMPORTANT:
 -- Keep real staff emails out of this public repository.
