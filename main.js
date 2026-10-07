@@ -895,6 +895,10 @@
   }
 
   async function openPanel(route) {
+    if (!db) {
+      show('<span class="eyebrow">حالة النظام</span><h2>تعذر الاتصال بقاعدة البيانات</h2><p>مكتبة Supabase أو إعدادات الاتصال لم تُحمّل. حدّث الصفحة، وإذا استمرت المشكلة أرسل صورة الشاشة.</p>');
+      return;
+    }
     const routes = {
       'auth-login': () => renderAuth('login'),
       'auth-signup': () => renderAuth('signup'),
