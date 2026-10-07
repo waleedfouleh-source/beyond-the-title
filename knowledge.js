@@ -62,7 +62,7 @@ async function hubOpen() {
   }
 
   if (ctx.profile.role === 'admin') return renderAdminHub(ctx.user);
-  if (ctx.profile.role === 'consultant') return renderConsultantHub(ctx.user);
+  if (['consultant','knowledge_manager'].includes(ctx.profile.role)) return renderConsultantHub(ctx.user);
 
   document.getElementById('hubStatus').textContent =
     'هذا الحساب لا يملك صلاحية دخول لوحة الإدارة أو مساحة المستشارة.';
@@ -121,7 +121,7 @@ async function hubSignup() {
   const identities = data?.user?.identities;
   out.textContent = Array.isArray(identities) && identities.length === 0
     ? 'هذا البريد مسجل مسبقًا. جرّب تسجيل الدخول أو أعد إرسال رابط التأكيد.'
-    : 'تم إنشاء الحساب. راجع البريد لتأكيده ثم سجل الدخول.';
+    : 'تم استلام طلب التسجيل، لكن وصول رسالة التأكيد غير مضمون قبل إعداد خدمة SMTP مخصصة. إذا لم يصلك البريد، تواصل مع إدارة المنصة.';
 }
 
 function friendlyHubAuthError(error) {
@@ -147,7 +147,7 @@ async function hubResendConfirmation() {
   });
   out.textContent = error
     ? friendlyHubAuthError(error)
-    : 'تم طلب إعادة إرسال رابط التأكيد. افحص الوارد والرسائل غير المرغوب فيها.';
+    : 'تم قبول طلب إعادة الإرسال، لكن لم يتم تأكيد تسليم البريد. يجب تفعيل SMTP مخصص إذا لم تصل الرسالة.';
 }
 
 async function hubLogout() {
