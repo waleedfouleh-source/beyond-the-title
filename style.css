@@ -3,3 +3,5 @@
 @media(max-width:720px){.maramPortrait{height:390px;width:min(330px,92vw)}}
 
 .hubItem{display:grid;gap:9px;padding:16px;margin:10px 0;border:1px solid #e2e9e7;border-radius:10px;background:white}.hubItem small{color:#647881}.hubItem button{padding:8px 12px}.panel textarea{min-height:120px}
+
+.hubIdentity{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:12px 0 20px;padding:13px 15px;border-radius:10px;background:#eef5f3}.hubIdentity small{color:#60717a}.hubActions{display:flex;gap:8px;flex-wrap:wrap}.hubItem textarea{width:100%;font:inherit;padding:11px;border:1px solid #d7dede;border-radius:7px;background:#fff}.hubItem p{margin:0}
