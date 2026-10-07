@@ -491,3 +491,10 @@ using(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())
 
 create index if not exists idx_advisor_messages_user_id on public.advisor_messages(user_id);
 create index if not exists idx_company_requests_status on public.company_requests(status);
+
+
+create index if not exists idx_applications_user_id on public.applications(user_id);
+create index if not exists idx_company_requests_submitted_by on public.company_requests(submitted_by);
+create index if not exists idx_cv_reports_user_id on public.cv_reports(user_id);
+create index if not exists idx_jobs_employer_id on public.jobs(employer_id);
+create index if not exists idx_knowledge_chunks_knowledge_id on public.knowledge_chunks(knowledge_id);
