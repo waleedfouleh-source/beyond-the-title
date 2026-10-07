@@ -398,3 +398,96 @@ create index if not exists idx_knowledge_approved_by
 -- IMPORTANT:
 -- Keep real staff emails out of this public repository.
 -- Seed private.staff_email_roles directly in the Supabase SQL editor.
+
+
+-- Functional test flows
+alter table public.profiles add column if not exists experience_years integer;
+alter table public.profiles add column if not exists target_field text;
+alter table public.profiles add column if not exists updated_at timestamptz default now();
+
+alter table public.cv_reports add column if not exists file_name text;
+alter table public.cv_reports add column if not exists status text not null default 'ready';
+
+create table if not exists public.advisor_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  question text not null,
+  answer text not null,
+  source_type text not null default 'test_advisor',
+  created_at timestamptz not null default now()
+);
+alter table public.advisor_messages enable row level security;
+grant select,insert on public.advisor_messages to authenticated;
+drop policy if exists "advisor own read" on public.advisor_messages;
+create policy "advisor own read" on public.advisor_messages for select to authenticated
+using (user_id=(select auth.uid()) or public.is_admin());
+drop policy if exists "advisor own insert" on public.advisor_messages;
+create policy "advisor own insert" on public.advisor_messages for insert to authenticated
+with check (user_id=(select auth.uid()));
+
+create table if not exists public.company_requests (
+  id uuid primary key default gen_random_uuid(),
+  company_name text not null,
+  work_email text not null,
+  job_title text not null,
+  requirements text,
+  submitted_by uuid references auth.users(id) on delete set null,
+  status text not null default 'new' check(status in ('new','reviewed','converted','rejected')),
+  admin_note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.company_requests enable row level security;
+grant insert on public.company_requests to anon,authenticated;
+grant select,update on public.company_requests to authenticated;
+drop policy if exists "company request public insert" on public.company_requests;
+create policy "company request public insert" on public.company_requests for insert to anon,authenticated
+with check (status='new');
+drop policy if exists "company request admin read" on public.company_requests;
+create policy "company request admin read" on public.company_requests for select to authenticated
+using (public.is_admin());
+drop policy if exists "company request admin update" on public.company_requests;
+create policy "company request admin update" on public.company_requests for update to authenticated
+using (public.is_admin()) with check (public.is_admin());
+
+create or replace function private.is_employer()
+returns boolean language sql stable security definer set search_path=public as $$
+  select exists(select 1 from public.profiles where id=(select auth.uid()) and role='employer')
+$$;
+revoke all on function private.is_employer() from public,anon;
+grant execute on function private.is_employer() to authenticated;
+
+drop policy if exists "jobs employer insert" on public.jobs;
+create policy "jobs employer insert" on public.jobs for insert to authenticated
+with check (public.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
+drop policy if exists "jobs employer update" on public.jobs;
+create policy "jobs employer update" on public.jobs for update to authenticated
+using (public.is_admin() or (private.is_employer() and employer_id=(select auth.uid())))
+with check (public.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
+drop policy if exists "jobs employer delete" on public.jobs;
+create policy "jobs employer delete" on public.jobs for delete to authenticated
+using (public.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
+
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+values ('cv-files','cv-files',false,5242880,array[
+  'application/pdf','application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+])
+on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
+
+drop policy if exists "cv upload own folder" on storage.objects;
+create policy "cv upload own folder" on storage.objects for insert to authenticated
+with check(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
+drop policy if exists "cv read own folder" on storage.objects;
+create policy "cv read own folder" on storage.objects for select to authenticated
+using(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
+drop policy if exists "cv update own folder" on storage.objects;
+create policy "cv update own folder" on storage.objects for update to authenticated
+using(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text)
+with check(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
+drop policy if exists "cv delete own folder" on storage.objects;
+create policy "cv delete own folder" on storage.objects for delete to authenticated
+using(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
+
+create index if not exists idx_advisor_messages_user_id on public.advisor_messages(user_id);
+create index if not exists idx_company_requests_status on public.company_requests(status);
