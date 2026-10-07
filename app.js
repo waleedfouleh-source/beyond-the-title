@@ -44,7 +44,7 @@ async function showAuth(mode='signup'){
      if(Array.isArray(identities)&&identities.length===0){
        out.textContent='هذا البريد مسجل مسبقًا. إذا لم تؤكد الحساب بعد، استخدم زر إعادة إرسال رابط التأكيد أو جرّب تسجيل الدخول.';
      }else{
-       out.textContent='تم إنشاء الحساب. راجع بريدك واضغط رابط التأكيد، ثم سجل الدخول.';
+       out.textContent='تم استلام طلب إنشاء الحساب. وصول رسالة التأكيد يتطلب إعداد بريد SMTP مخصص؛ إذا لم تصلك الرسالة، تواصل مع إدارة المنصة.';
      }
      document.getElementById('authResend').style.display='inline-block';
      return;
@@ -69,6 +69,6 @@ async function resendAuthConfirmation(){
  if(!window.db){out.textContent='الاتصال بقاعدة البيانات غير متاح حاليًا';return}
  out.textContent='جاري إعادة إرسال رابط التأكيد...';
  const {error}=await window.db.auth.resend({type:'signup',email,options:{emailRedirectTo:(window.BTT_CONFIG?.siteUrl || location.origin+location.pathname)}});
- out.textContent=error?friendlyAuthError(error):'تم طلب إعادة إرسال رابط التأكيد. افحص الوارد والرسائل غير المرغوب فيها.';
+ out.textContent=error?friendlyAuthError(error):'تم قبول طلب إعادة الإرسال، لكن هذا لا يثبت تسليم الرسالة. يجب إعداد SMTP مخصص لضمان إرسالها.';
 }
 
