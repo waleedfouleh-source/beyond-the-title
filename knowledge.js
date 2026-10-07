@@ -77,6 +77,7 @@ function renderHubLogin() {
       '<input id="hubPass" type="password" autocomplete="current-password" placeholder="كلمة المرور">' +
       '<button class="primary" onclick="hubLogin()">تسجيل الدخول</button>' +
       '<button class="secondary" onclick="hubSignup()">إنشاء الحساب لأول مرة</button>' +
+      '<button class="secondary" onclick="hubResendConfirmation()">إعادة إرسال رابط التأكيد</button>' +
       '<p id="authMessage" role="status"></p>' +
     '</div>';
 }
@@ -108,14 +109,45 @@ async function hubSignup() {
     return;
   }
   out.textContent = 'جاري إنشاء الحساب...';
-  const { error } = await db.auth.signUp({
+  const { data, error } = await db.auth.signUp({
     email,
     password,
     options:{ emailRedirectTo:(window.BTT_CONFIG?.siteUrl || location.origin + location.pathname) }
   });
-  out.textContent = error
-    ? 'تعذر إنشاء الحساب: ' + error.message
+  if (error) {
+    out.textContent = friendlyHubAuthError(error);
+    return;
+  }
+  const identities = data?.user?.identities;
+  out.textContent = Array.isArray(identities) && identities.length === 0
+    ? 'هذا البريد مسجل مسبقًا. جرّب تسجيل الدخول أو أعد إرسال رابط التأكيد.'
     : 'تم إنشاء الحساب. راجع البريد لتأكيده ثم سجل الدخول.';
+}
+
+function friendlyHubAuthError(error) {
+  const msg = String(error?.message || '');
+  if (/Email address not authorized/i.test(msg)) return 'لا يمكن إرسال رسالة التأكيد لهذا البريد حاليًا لأن خدمة البريد للمشروع غير مهيأة بعد للمستخدمين الخارجيين.';
+  if (/already registered/i.test(msg)) return 'هذا البريد مسجل بالفعل. جرّب تسجيل الدخول أو إعادة إرسال رابط التأكيد.';
+  if (/rate limit/i.test(msg)) return 'تم تجاوز حد إرسال رسائل التأكيد مؤقتًا.';
+  return 'تعذر إنشاء الحساب: ' + msg;
+}
+
+async function hubResendConfirmation() {
+  const email = document.getElementById('hubEmail').value.trim();
+  const out = document.getElementById('authMessage');
+  if (!email) {
+    out.textContent = 'أدخل البريد الإلكتروني أولًا.';
+    return;
+  }
+  out.textContent = 'جاري إعادة إرسال رابط التأكيد...';
+  const { error } = await db.auth.resend({
+    type: 'signup',
+    email,
+    options:{ emailRedirectTo:(window.BTT_CONFIG?.siteUrl || location.origin + location.pathname) }
+  });
+  out.textContent = error
+    ? friendlyHubAuthError(error)
+    : 'تم طلب إعادة إرسال رابط التأكيد. افحص الوارد والرسائل غير المرغوب فيها.';
 }
 
 async function hubLogout() {
