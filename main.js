@@ -689,6 +689,7 @@
         '<div><b>' + (feedback.data || []).filter((x) => x.status === 'new').length + '</b><p>ملاحظات جديدة</p></div>' +
         '<div><b>' + (companyRequests.data || []).filter((x) => x.status === 'new').length + '</b><p>طلبات شركات جديدة</p></div>' +
       '</div>' +
+      '<button class="secondary fullBtn" onclick="openPanel(\'system-check\')">تشغيل فحص النظام الآن</button>' +
 
       '<h3>إضافة مرجعية إدارية</h3>' +
       '<form class="form staffForm" id="adminKnowledgeForm">' +
