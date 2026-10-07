@@ -207,14 +207,7 @@
 
 
   function recoveryRedirectUrl() {
-    const base = cfg.siteUrl || (location.origin + location.pathname);
-    try {
-      const url = new URL(base, location.href);
-      url.searchParams.set('mode', 'recovery');
-      return url.toString();
-    } catch {
-      return base;
-    }
+    return cfg.siteUrl || (location.origin + location.pathname);
   }
 
   function renderForgotPassword(prefill = '') {
