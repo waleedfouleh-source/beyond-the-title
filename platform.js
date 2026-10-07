@@ -194,7 +194,8 @@
     status('cvStatus','جاري رفع الملف...');
     const clean=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
     const path=state.user.id+'/'+Date.now()+'-'+clean;
-    const up=await db.storage.from('cv-files').upload(path,file,{contentType:file.type||undefined,upsert:false});
+    const mime=file.type||({pdf:'application/pdf',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}[ext]);
+    const up=await db.storage.from('cv-files').upload(path,file,{contentType:mime,upsert:false});
     if(up.error){
       if(btn)btn.disabled=false;
       return status('cvStatus','تعذر رفع الملف: '+up.error.message,false);
@@ -471,7 +472,11 @@
   }
 
   async function platformOpen(view){
-    if(view==='signup')return previousOpenPanel('signup');
+    if(view==='signup'){
+      await loadSession();
+      if(state.user)return openAccount();
+      return previousOpenPanel('signup');
+    }
     if(view==='admin'){
       const result=await previousOpenPanel('admin');
       setTimeout(appendAdminRequests,80);
