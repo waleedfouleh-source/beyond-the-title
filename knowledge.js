@@ -111,7 +111,7 @@ async function hubSignup() {
   const { error } = await db.auth.signUp({
     email,
     password,
-    options:{ emailRedirectTo:location.origin + location.pathname }
+    options:{ emailRedirectTo:(window.BTT_CONFIG?.siteUrl || location.origin + location.pathname) }
   });
   out.textContent = error
     ? 'تعذر إنشاء الحساب: ' + error.message
