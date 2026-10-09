@@ -174,6 +174,7 @@
     const target = state.afterAuth;
     state.afterAuth = null;
     if (target) return openPanel(target);
+    if ((state.profile?.role || 'candidate') === 'candidate') return openPanel('profile');
     if (['admin', 'consultant'].includes(state.profile?.role)) return openPanel('staff');
     return openPanel('account');
   }
@@ -422,7 +423,7 @@
     if (!(await requireAuth('upload'))) return;
     show(
       '<span class="eyebrow">السيرة الذاتية</span><h2>ارفع الـCV</h2>' +
-      '<p class="testNotice">ملفك محفوظ بشكل خاص بحسابك. التحليل بالذكاء الاصطناعي يقرأ محتوى السيرة (PDF أو DOCX) ويطبّق عليها مرجعية مرام المعتمدة. إذا لم يكن التحليل متاحًا يظهر تقرير اختبار مبني على ملفك المهني فقط، ويُكتب ذلك بوضوح في التقرير.</p>' +
+      '<p class="testNotice">ملفك محفوظ بشكل خاص بحسابك. التحليل بالذكاء الاصطناعي يقرأ محتوى السيرة (PDF أو DOCX) ويطبّق عليها مرجعية مرام المعتمدة.</p>' +
       '<label class="drop fileDrop" for="cvFile"><h3 id="fileTitle">اضغط لاختيار الملف</h3><p id="fileMeta">PDF أو DOCX • حتى 5MB</p><input id="cvFile" type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>' +
       '<label class="consentLine"><input type="checkbox" id="cvConsent"> أوافق على إرسال محتوى سيرتي إلى خدمة Google Gemini لتحليلها. في النسخة المجانية قد تستخدم Google المحتوى لتحسين خدماتها، لذا لا ترفع سيرة تحتوي معلومات لا تريد مشاركتها.</label>' +
       '<button class="primary fullBtn" id="cvUploadButton" type="button">رفع الملف وتحليل السيرة</button>' +
@@ -502,23 +503,9 @@
       return setTimeout(() => renderReport(), 250);
     }
 
-    // AI unavailable -> clearly-labelled profile-based test report (never presented as an AI reading)
-    const fallback = buildAnalysis(state.profile || {}, file);
-    fallback.note = 'لم يتوفر التحليل بالذكاء الاصطناعي (' + (ai.message || 'غير متاح حاليًا') + '). هذا تقرير اختبار مبني على ملفك المهني فقط وليس قراءة لمحتوى سيرتك.';
-    const inserted = await db.from('cv_reports').insert({
-      user_id: state.user.id,
-      file_path: path,
-      file_name: file.name,
-      status: 'ready',
-      analysis: fallback
-    }).select('id,file_path,file_name,status,analysis,created_at').single();
-
+    // First-user test: never substitute a profile-only score for a failed CV analysis.
     btn.disabled = false;
-    if (inserted.error) return status('cvStatus', 'تم رفع الملف لكن فشل إنشاء التقرير: ' + errText(inserted.error), 'error');
-
-    state.latestReport = inserted.data;
-    status('cvStatus', 'تعذر التحليل الذكي: ' + (ai.message || 'غير متاح') + ' — تم إنشاء تقرير اختبار.', 'error');
-    setTimeout(() => renderReport(), 1800);
+    status('cvStatus', 'تعذر تحليل السيرة بالذكاء الاصطناعي: ' + (ai.message || 'الخدمة غير متاحة حاليًا') + '. الملف رُفع بأمان، لكن لن ننشئ نتيجة غير حقيقية. حاول مرة أخرى بعد إصلاح خدمة التحليل.', 'error');
   }
 
   async function invokeAnalyze(filePath, fileName) {
