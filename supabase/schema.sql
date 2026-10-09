@@ -145,10 +145,14 @@ as $$
 declare
   assigned_role text;
 begin
-  select ser.role into assigned_role
-  from private.staff_email_roles ser
-  where lower(ser.email)=lower(new.email)
-  limit 1;
+  -- Staff roles are granted ONLY after the email address is confirmed,
+  -- so nobody can claim an admin/consultant email by signing up with it first.
+  if new.email_confirmed_at is not null then
+    select ser.role into assigned_role
+    from private.staff_email_roles ser
+    where lower(ser.email)=lower(new.email)
+    limit 1;
+  end if;
 
   insert into public.profiles(id,full_name,role)
   values(
@@ -157,8 +161,7 @@ begin
     coalesce(assigned_role,'candidate')
   )
   on conflict(id) do update
-  set full_name=coalesce(public.profiles.full_name,excluded.full_name),
-      role=case
+  set role=case
         when assigned_role is not null then assigned_role
         else public.profiles.role
       end;
@@ -173,6 +176,13 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function private.handle_new_auth_user();
+
+drop trigger if exists on_auth_user_confirmed on auth.users;
+create trigger on_auth_user_confirmed
+after update of email_confirmed_at on auth.users
+for each row
+when (old.email_confirmed_at is null and new.email_confirmed_at is not null)
+execute function private.handle_new_auth_user();
 
 alter table public.profiles enable row level security;
 alter table public.knowledge enable row level security;
@@ -204,32 +214,39 @@ grant select,insert,update,delete on public.courses to authenticated;
 grant select,insert,update,delete on public.cv_reports to authenticated;
 grant select,insert,update,delete on public.applications to authenticated;
 
+drop policy if exists "profile read own or admin" on public.profiles;
 create policy "profile read own or admin"
 on public.profiles for select to authenticated
 using (id=(select auth.uid()) or private.is_admin());
 
+drop policy if exists "profile insert own candidate" on public.profiles;
 create policy "profile insert own candidate"
 on public.profiles for insert to authenticated
 with check (id=(select auth.uid()) and role='candidate');
 
+drop policy if exists "profile update own candidate" on public.profiles;
 create policy "profile update own candidate"
 on public.profiles for update to authenticated
 using (id=(select auth.uid()) and role='candidate')
 with check (id=(select auth.uid()) and role='candidate');
 
+drop policy if exists "profile admin update" on public.profiles;
 create policy "profile admin update"
 on public.profiles for update to authenticated
 using (private.is_admin())
 with check (private.is_admin());
 
+drop policy if exists "approved knowledge public read" on public.knowledge;
 create policy "approved knowledge public read"
 on public.knowledge for select to anon,authenticated
 using (status='approved');
 
+drop policy if exists "knowledge admin read" on public.knowledge;
 create policy "knowledge admin read"
 on public.knowledge for select to authenticated
 using (private.is_admin());
 
+drop policy if exists "knowledge admin insert" on public.knowledge;
 create policy "knowledge admin insert"
 on public.knowledge for insert to authenticated
 with check (
@@ -238,15 +255,18 @@ with check (
   and source_role='admin'
 );
 
+drop policy if exists "knowledge admin update" on public.knowledge;
 create policy "knowledge admin update"
 on public.knowledge for update to authenticated
 using (private.is_admin())
 with check (private.is_admin());
 
+drop policy if exists "knowledge admin delete" on public.knowledge;
 create policy "knowledge admin delete"
 on public.knowledge for delete to authenticated
 using (private.is_admin());
 
+drop policy if exists "knowledge consultant read own" on public.knowledge;
 create policy "knowledge consultant read own"
 on public.knowledge for select to authenticated
 using (
@@ -254,6 +274,7 @@ using (
   and created_by=(select auth.uid())
 );
 
+drop policy if exists "knowledge consultant insert draft" on public.knowledge;
 create policy "knowledge consultant insert draft"
 on public.knowledge for insert to authenticated
 with check (
@@ -263,6 +284,7 @@ with check (
   and source_role='consultant'
 );
 
+drop policy if exists "knowledge consultant update own draft" on public.knowledge;
 create policy "knowledge consultant update own draft"
 on public.knowledge for update to authenticated
 using (
@@ -277,6 +299,7 @@ with check (
   and source_role='consultant'
 );
 
+drop policy if exists "knowledge consultant delete own draft" on public.knowledge;
 create policy "knowledge consultant delete own draft"
 on public.knowledge for delete to authenticated
 using (
@@ -285,11 +308,13 @@ using (
   and status='draft'
 );
 
+drop policy if exists "knowledge chunks admin" on public.knowledge_chunks;
 create policy "knowledge chunks admin"
 on public.knowledge_chunks for all to authenticated
 using (private.is_admin())
 with check (private.is_admin());
 
+drop policy if exists "consultant feedback read own or admin" on public.consultant_feedback;
 create policy "consultant feedback read own or admin"
 on public.consultant_feedback for select to authenticated
 using (
@@ -297,6 +322,7 @@ using (
   or private.is_admin()
 );
 
+drop policy if exists "consultant feedback consultant insert" on public.consultant_feedback;
 create policy "consultant feedback consultant insert"
 on public.consultant_feedback for insert to authenticated
 with check (
@@ -305,19 +331,23 @@ with check (
   and status='new'
 );
 
+drop policy if exists "consultant feedback admin update" on public.consultant_feedback;
 create policy "consultant feedback admin update"
 on public.consultant_feedback for update to authenticated
 using (private.is_admin())
 with check (private.is_admin());
 
+drop policy if exists "consultant feedback admin delete" on public.consultant_feedback;
 create policy "consultant feedback admin delete"
 on public.consultant_feedback for delete to authenticated
 using (private.is_admin());
 
+drop policy if exists "jobs public published" on public.jobs;
 create policy "jobs public published"
 on public.jobs for select to anon,authenticated
 using (status='published');
 
+drop policy if exists "jobs owner or admin read" on public.jobs;
 create policy "jobs owner or admin read"
 on public.jobs for select to authenticated
 using (
@@ -325,6 +355,7 @@ using (
   or private.is_admin()
 );
 
+drop policy if exists "jobs employer insert" on public.jobs;
 create policy "jobs employer insert"
 on public.jobs for insert to authenticated
 with check (
@@ -332,6 +363,7 @@ with check (
   or private.is_admin()
 );
 
+drop policy if exists "jobs employer update" on public.jobs;
 create policy "jobs employer update"
 on public.jobs for update to authenticated
 using (
@@ -343,6 +375,7 @@ with check (
   or private.is_admin()
 );
 
+drop policy if exists "jobs employer delete" on public.jobs;
 create policy "jobs employer delete"
 on public.jobs for delete to authenticated
 using (
@@ -350,15 +383,18 @@ using (
   or private.is_admin()
 );
 
+drop policy if exists "courses public" on public.courses;
 create policy "courses public"
 on public.courses for select to anon,authenticated
 using (status='published');
 
+drop policy if exists "courses admin" on public.courses;
 create policy "courses admin"
 on public.courses for all to authenticated
 using (private.is_admin())
 with check (private.is_admin());
 
+drop policy if exists "reports private" on public.cv_reports;
 create policy "reports private"
 on public.cv_reports for select to authenticated
 using (
@@ -366,10 +402,17 @@ using (
   or private.is_admin()
 );
 
+drop policy if exists "reports delete own" on public.cv_reports;
+create policy "reports delete own"
+on public.cv_reports for delete to authenticated
+using (user_id=(select auth.uid()));
+
+drop policy if exists "reports insert own" on public.cv_reports;
 create policy "reports insert own"
 on public.cv_reports for insert to authenticated
 with check (user_id=(select auth.uid()));
 
+drop policy if exists "applications own" on public.applications;
 create policy "applications own"
 on public.applications for select to authenticated
 using (
@@ -382,9 +425,13 @@ using (
   )
 );
 
+drop policy if exists "applications own insert" on public.applications;
 create policy "applications own insert"
 on public.applications for insert to authenticated
-with check (user_id=(select auth.uid()));
+with check (
+  user_id=(select auth.uid())
+  and exists(select 1 from public.jobs j where j.id=job_id and j.status='published')
+);
 
 create index if not exists idx_consultant_feedback_consultant_id
   on public.consultant_feedback(consultant_id);
@@ -419,10 +466,12 @@ create table if not exists public.advisor_messages (
 alter table public.advisor_messages enable row level security;
 grant select,insert on public.advisor_messages to authenticated;
 drop policy if exists "advisor own read" on public.advisor_messages;
-create policy "advisor own read" on public.advisor_messages for select to authenticated
+create policy "advisor own read"
+on public.advisor_messages for select to authenticated
 using (user_id=(select auth.uid()) or private.is_admin());
 drop policy if exists "advisor own insert" on public.advisor_messages;
-create policy "advisor own insert" on public.advisor_messages for insert to authenticated
+create policy "advisor own insert"
+on public.advisor_messages for insert to authenticated
 with check (user_id=(select auth.uid()));
 
 create table if not exists public.company_requests (
@@ -441,13 +490,19 @@ alter table public.company_requests enable row level security;
 grant insert on public.company_requests to anon,authenticated;
 grant select,update on public.company_requests to authenticated;
 drop policy if exists "company request public insert" on public.company_requests;
-create policy "company request public insert" on public.company_requests for insert to anon,authenticated
-with check (status='new');
+create policy "company request public insert"
+on public.company_requests for insert to anon,authenticated
+with check (
+  status='new'
+  and submitted_by is not distinct from (select auth.uid())
+);
 drop policy if exists "company request admin read" on public.company_requests;
-create policy "company request admin read" on public.company_requests for select to authenticated
+create policy "company request admin read"
+on public.company_requests for select to authenticated
 using (private.is_admin());
 drop policy if exists "company request admin update" on public.company_requests;
-create policy "company request admin update" on public.company_requests for update to authenticated
+create policy "company request admin update"
+on public.company_requests for update to authenticated
 using (private.is_admin()) with check (private.is_admin());
 
 create or replace function private.is_employer()
@@ -458,14 +513,17 @@ revoke all on function private.is_employer() from public,anon;
 grant execute on function private.is_employer() to authenticated;
 
 drop policy if exists "jobs employer insert" on public.jobs;
-create policy "jobs employer insert" on public.jobs for insert to authenticated
+create policy "jobs employer insert"
+on public.jobs for insert to authenticated
 with check (private.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
 drop policy if exists "jobs employer update" on public.jobs;
-create policy "jobs employer update" on public.jobs for update to authenticated
+create policy "jobs employer update"
+on public.jobs for update to authenticated
 using (private.is_admin() or (private.is_employer() and employer_id=(select auth.uid())))
 with check (private.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
 drop policy if exists "jobs employer delete" on public.jobs;
-create policy "jobs employer delete" on public.jobs for delete to authenticated
+create policy "jobs employer delete"
+on public.jobs for delete to authenticated
 using (private.is_admin() or (private.is_employer() and employer_id=(select auth.uid())));
 
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
@@ -476,17 +534,21 @@ values ('cv-files','cv-files',false,5242880,array[
 on conflict(id) do update set public=false,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
 
 drop policy if exists "cv upload own folder" on storage.objects;
-create policy "cv upload own folder" on storage.objects for insert to authenticated
+create policy "cv upload own folder"
+on storage.objects for insert to authenticated
 with check(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
 drop policy if exists "cv read own folder" on storage.objects;
-create policy "cv read own folder" on storage.objects for select to authenticated
+create policy "cv read own folder"
+on storage.objects for select to authenticated
 using(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
 drop policy if exists "cv update own folder" on storage.objects;
-create policy "cv update own folder" on storage.objects for update to authenticated
+create policy "cv update own folder"
+on storage.objects for update to authenticated
 using(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text)
 with check(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
 drop policy if exists "cv delete own folder" on storage.objects;
-create policy "cv delete own folder" on storage.objects for delete to authenticated
+create policy "cv delete own folder"
+on storage.objects for delete to authenticated
 using(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
 
 create index if not exists idx_advisor_messages_user_id on public.advisor_messages(user_id);
@@ -498,3 +560,14 @@ create index if not exists idx_company_requests_submitted_by on public.company_r
 create index if not exists idx_cv_reports_user_id on public.cv_reports(user_id);
 create index if not exists idx_jobs_employer_id on public.jobs(employer_id);
 create index if not exists idx_knowledge_chunks_knowledge_id on public.knowledge_chunks(knowledge_id);
+
+
+-- Re-sync staff roles for accounts that already exist and have a CONFIRMED email.
+-- Safe to run any time after seeding private.staff_email_roles.
+update public.profiles p
+set role=ser.role
+from auth.users u
+join private.staff_email_roles ser on lower(ser.email)=lower(u.email)
+where p.id=u.id
+  and u.email_confirmed_at is not null
+  and p.role is distinct from ser.role;

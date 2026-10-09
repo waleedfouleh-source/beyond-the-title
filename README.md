@@ -1,6 +1,14 @@
 # ما وراء العنوان | Beyond the Title
 
-منصة مهنية عربية مدعومة بالذكاء الاصطناعي: تحليل CV، خطة تطوير شخصية، مستشار مهني ذكي، مطابقة وظائف، دورات، وبوابة للشركات.
+منصة مهنية عربية: الباحث عن عمل يرفع CV ويحصل على تقرير وخطة وتوصيات مبنية على **مرجعية مرام المعتمدة**.
 
-## Prototype
-The current version is a front-end interactive prototype using demo data. AI/API, authentication and persistent storage are intentionally left for the next integration phase.
+## الحالة الحالية (صريحة)
+- يعمل فعليًا: تسجيل/دخول، أدوار (admin / consultant / candidate / employer)، رفع CV خاص، إدخال مرام للمرجعية كمسودات، اعتماد وليد، ظهور المرجعية المعتمدة في التقرير والخطة والمستشار، الوظائف، الدورات، طلبات الشركات.
+- **تحليل الـCV بالذكاء الاصطناعي:** جاهز عبر `supabase/functions/analyze-cv` (Gemini). يعمل بعد نشر الدالة وإضافة `GEMINI_API_KEY` (انظر SETUP.md). بدونها يظهر تقرير اختبار موسوم بوضوح.
+- **المستشار** ما زال يبحث في مرجعية مرام بالكلمات (ليس نموذجًا لغويًا بعد).
+
+## الملفات
+`index.html` · `main.js` (كل منطق الواجهة) · `style.css` · `config.js` (مفاتيح عامة فقط) · `supabase/schema.sql` · `.github/workflows/pages.yml`
+
+## النشر
+GitHub Pages ينشر فقط: index.html, main.js, style.css, config.js, maram.png (ملفات SQL والتوثيق لا تُنشر).

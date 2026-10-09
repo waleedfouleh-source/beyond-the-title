@@ -28,6 +28,61 @@
     catch { return String(value); }
   };
 
+
+  // <retrieval>
+  const safeUrl = (u) => {
+    try {
+      const x = new URL(String(u || '').trim());
+      return ['http:', 'https:'].includes(x.protocol) ? x.href : '';
+    } catch { return ''; }
+  };
+
+  // Arabic-aware normalisation so "السيرة" / "سيرتي" / "السيره" match each other.
+  const normAr = (v) => String(v ?? '').toLowerCase()
+    .replace(/[\u064B-\u0652\u0640]/g, '')
+    .replace(/[إأآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+
+  const STOP = new Set(['من', 'في', 'على', 'الى', 'إلى', 'عن', 'هل', 'ما', 'ماذا', 'كيف', 'انا', 'أنا', 'هو', 'هي', 'لي',
+    'لو', 'او', 'أو', 'مع', 'هاي', 'هاد', 'هذا', 'هذه', 'شو', 'ليش', 'بدي', 'عندي', 'كل', 'يا', 'the', 'and', 'for', 'how', 'what', 'is', 'my', 'to', 'of', 'a']
+    .map(normAr));
+
+  const stemAr = (w) => w.replace(/^(وال|بال|لل|فال|كال|ال)/, '').replace(/(ات|ون|ين|يه|ها|نا|تي|ي)$/, (m, g, i) => (w.length - m.length >= 3 ? '' : m));
+
+  const tokensOf = (v) => [...new Set(normAr(v).split(' ').filter((w) => w && !STOP.has(w)).map(stemAr).filter((w) => w.length >= 2))];
+
+  const INTENTS = [
+    ['cv', /سير|cv|resume|كي في/],
+    ['interview', /مقابل|انترفيو|interview/],
+    ['development', /مهار|تطوير|تدريب|تعلم|دور[هات]/],
+    ['recruitment', /وظيف|توظيف|تقديم|شغل|فرص|عمل/]
+  ];
+  const intentOf = (q) => { const n = normAr(q); const hit = INTENTS.find(([, re]) => re.test(n)); return hit ? hit[0] : null; };
+
+  // Rank approved knowledge rows against a question. Returns the best rows (max 3).
+  function rankKnowledge(question, rows, limit = 3) {
+    const qTokens = tokensOf(question);
+    const intent = intentOf(question);
+    return (rows || []).map((row) => {
+      const title = new Set(tokensOf(row.title));
+      const body = new Set(tokensOf(row.body));
+      let hits = 0, score = 0;
+      qTokens.forEach((t) => {
+        const inTitle = [...title].some((x) => x.includes(t) || t.includes(x));
+        const inBody = [...body].some((x) => x.includes(t) || t.includes(x));
+        if (inTitle) { score += 3; hits++; } else if (inBody) { score += 1; hits++; }
+      });
+      const intentMatch = intent && row.category === intent;
+      if (intentMatch) score += 4;
+      return { row, score, hits, intentMatch };
+    }).filter((x) => x.hits > 0 || x.intentMatch)
+      .filter((x) => x.score >= 2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((x) => x.row);
+  }
+  // </retrieval>
+
   const roleLabel = (role) => ({
     admin: 'مدير المنصة — Admin',
     consultant: 'المستشارة — Consultant',
@@ -367,9 +422,10 @@
     if (!(await requireAuth('upload'))) return;
     show(
       '<span class="eyebrow">السيرة الذاتية</span><h2>ارفع الـCV</h2>' +
-      '<p class="testNotice">الرفع حقيقي وخاص بحسابك. تحليل النص بواسطة نموذج AI كامل غير مفعل بعد؛ تقرير الاختبار يعتمد حاليًا على ملفك المهني وبيانات الملف.</p>' +
-      '<label class="drop fileDrop" for="cvFile"><h3 id="fileTitle">اضغط لاختيار الملف</h3><p id="fileMeta">PDF, DOC, DOCX • حتى 5MB</p><input id="cvFile" type="file" hidden accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>' +
-      '<button class="primary fullBtn" id="cvUploadButton" type="button">رفع الملف وإنشاء تقرير الاختبار</button>' +
+      '<p class="testNotice">ملفك محفوظ بشكل خاص بحسابك. التحليل بالذكاء الاصطناعي يقرأ محتوى السيرة (PDF أو DOCX) ويطبّق عليها مرجعية مرام المعتمدة. إذا لم يكن التحليل متاحًا يظهر تقرير اختبار مبني على ملفك المهني فقط، ويُكتب ذلك بوضوح في التقرير.</p>' +
+      '<label class="drop fileDrop" for="cvFile"><h3 id="fileTitle">اضغط لاختيار الملف</h3><p id="fileMeta">PDF أو DOCX • حتى 5MB</p><input id="cvFile" type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>' +
+      '<label class="consentLine"><input type="checkbox" id="cvConsent"> أوافق على إرسال محتوى سيرتي إلى خدمة Google Gemini لتحليلها. في النسخة المجانية قد تستخدم Google المحتوى لتحسين خدماتها، لذا لا ترفع سيرة تحتوي معلومات لا تريد مشاركتها.</label>' +
+      '<button class="primary fullBtn" id="cvUploadButton" type="button">رفع الملف وتحليل السيرة</button>' +
       '<p id="cvStatus" class="status"></p>'
     );
 
@@ -416,7 +472,8 @@
     if (file.size > 5 * 1024 * 1024) return status('cvStatus', 'الملف أكبر من 5MB.', 'error');
 
     const ext = (file.name.split('.').pop() || '').toLowerCase();
-    if (!['pdf', 'doc', 'docx'].includes(ext)) return status('cvStatus', 'نوع الملف غير مدعوم.', 'error');
+    if (!['pdf', 'docx'].includes(ext)) return status('cvStatus', ext === 'doc' ? 'صيغة DOC القديمة غير مدعومة. احفظ السيرة كـ PDF أو DOCX.' : 'نوع الملف غير مدعوم. استخدم PDF أو DOCX.', 'error');
+    if (!$('cvConsent')?.checked) return status('cvStatus', 'يجب الموافقة على إرسال محتوى السيرة للتحليل أولًا.', 'error');
 
     const mime = file.type || ({
       pdf: 'application/pdf',
@@ -436,21 +493,47 @@
       return status('cvStatus', errText(up.error), 'error');
     }
 
-    const analysis = buildAnalysis(state.profile || {}, file);
+    status('cvStatus', 'جاري تحليل السيرة بالذكاء الاصطناعي... قد يستغرق حتى دقيقة.');
+    const ai = await invokeAnalyze(path, file.name);
+    if (ai.report) {
+      btn.disabled = false;
+      state.latestReport = ai.report;
+      status('cvStatus', 'اكتمل تحليل السيرة.', 'ok');
+      return setTimeout(() => renderReport(), 250);
+    }
+
+    // AI unavailable -> clearly-labelled profile-based test report (never presented as an AI reading)
+    const fallback = buildAnalysis(state.profile || {}, file);
+    fallback.note = 'لم يتوفر التحليل بالذكاء الاصطناعي (' + (ai.message || 'غير متاح حاليًا') + '). هذا تقرير اختبار مبني على ملفك المهني فقط وليس قراءة لمحتوى سيرتك.';
     const inserted = await db.from('cv_reports').insert({
       user_id: state.user.id,
       file_path: path,
       file_name: file.name,
       status: 'ready',
-      analysis
+      analysis: fallback
     }).select('id,file_path,file_name,status,analysis,created_at').single();
 
     btn.disabled = false;
     if (inserted.error) return status('cvStatus', 'تم رفع الملف لكن فشل إنشاء التقرير: ' + errText(inserted.error), 'error');
 
     state.latestReport = inserted.data;
-    status('cvStatus', 'تم رفع الملف وإنشاء التقرير.', 'ok');
-    setTimeout(() => renderReport(), 250);
+    status('cvStatus', 'تعذر التحليل الذكي: ' + (ai.message || 'غير متاح') + ' — تم إنشاء تقرير اختبار.', 'error');
+    setTimeout(() => renderReport(), 1800);
+  }
+
+  async function invokeAnalyze(filePath, fileName) {
+    try {
+      const { data, error } = await db.functions.invoke('analyze-cv', { body: { file_path: filePath, file_name: fileName } });
+      if (error) {
+        let info = {};
+        try { info = await error.context.json(); } catch { /* not JSON */ }
+        return { message: info.message || (error.name === 'FunctionsFetchError' ? 'الخدمة غير منشورة بعد' : errText(error)) };
+      }
+      if (!data?.report) return { message: data?.message || 'نتيجة فارغة' };
+      return { report: data.report };
+    } catch (e) {
+      return { message: errText(e) };
+    }
   }
 
   async function getLatestReport() {
@@ -466,27 +549,55 @@
     return state.latestReport;
   }
 
+  // Shows Maram's/Admin's APPROVED guidance inside the report and the plan, so her expertise
+  // actually shapes what the user sees. Honest empty state when nothing is approved yet.
+  async function knowledgeBlock(categories, heading) {
+    const rows = (await loadApprovedKnowledge()).filter((k) => categories.includes(k.category)).slice(0, 4);
+    if (!rows.length) {
+      return '<h3>' + esc(heading) + '</h3><p class="testNotice">لا توجد مرجعية معتمدة لهذا القسم بعد. عند اعتماد مواد مرام ستظهر هنا تلقائيًا.</p>';
+    }
+    return '<h3>' + esc(heading) + '</h3><div class="listStack">' + rows.map((k) => {
+      const body = String(k.body || '').trim();
+      return '<div class="hubItem"><b>' + esc(k.title) + '</b><small>' + (k.source_role === 'consultant' ? 'مرجعية مرام' : 'مرجعية المنصة') + '</small><p>' +
+        esc(body.slice(0, 420)) + (body.length > 420 ? '…' : '') + '</p></div>';
+    }).join('') + '</div>';
+  }
+
   async function renderReport() {
     const report = await getLatestReport();
     if (!state.user) return;
     if (!report) {
-      show('<span class="eyebrow">التقرير</span><h2>لا يوجد تقرير بعد</h2><p>ارفع الـCV أولًا لإنشاء تقرير الاختبار.</p><button class="primary" onclick="openPanel(\'upload\')">رفع CV</button>');
+      show('<span class="eyebrow">التقرير</span><h2>لا يوجد تقرير بعد</h2><p>ارفع الـCV أولًا لإنشاء التقرير.</p><button class="primary" onclick="openPanel(\'upload\')">رفع CV</button>');
       return;
     }
 
     const a = report.analysis || {};
-    const strengths = (a.strengths || []).map((x) => '<li>' + esc(x) + '</li>').join('');
-    const gaps = (a.gaps || []).map((x) => '<li>' + esc(x) + '</li>').join('');
+    const li = (arr) => (arr || []).map((x) => '<li>' + esc(x) + '</li>').join('');
+    const isAi = a.mode === 'ai';
+
+    let aiExtra = '';
+    if (isAi) {
+      const imps = (a.cv_improvements || []).map((x) =>
+        '<div class="hubItem"><b>' + esc(x.section || 'السيرة') + '</b><p>' + esc(x.issue || '') + '</p><p><b>التعديل المقترح:</b> ' + esc(x.fix || '') + '</p></div>').join('');
+      const applied = (a.applied_guidance || []).map((g) => esc(g.title)).join('، ');
+      aiExtra =
+        (a.summary ? '<p>' + esc(a.summary) + '</p>' : '') +
+        (a.score_reason ? '<p class="metaLine">سبب التقييم: ' + esc(a.score_reason) + '</p>' : '') +
+        (imps ? '<h3>تعديلات محددة على سيرتك</h3><div class="listStack">' + imps + '</div>' : '') +
+        ((a.suggested_roles || []).length ? '<h3>وظائف مناسبة لك</h3><ul>' + li(a.suggested_roles) + '</ul>' : '') +
+        '<p class="metaLine">' + (applied ? 'طُبّقت في هذا التحليل مرجعية مرام: ' + esc(applied) : 'لم تنطبق مرجعية معتمدة من مرام على هذه السيرة.') + '</p>';
+    }
 
     show(
-      '<span class="eyebrow">تقريرك الشخصي</span><h2>جاهزيتك المهنية — نسخة الاختبار</h2>' +
+      '<span class="eyebrow">تقريرك الشخصي</span><h2>' + (isAi ? 'تحليل سيرتك بالذكاء الاصطناعي' : 'جاهزيتك المهنية — نسخة الاختبار') + '</h2>' +
       '<div class="score">' + esc(a.score || 0) + '%</div>' +
-      '<p class="testNotice">' + esc(a.note || '') + '</p>' +
+      '<p class="testNotice">' + esc(a.note || '') + '</p>' + aiExtra +
       '<div class="miniCards">' +
-        '<div><b>نقاط القوة</b><ul>' + strengths + '</ul></div>' +
-        '<div><b>تحتاج تطوير</b><ul>' + gaps + '</ul></div>' +
+        '<div><b>نقاط القوة</b><ul>' + li(a.strengths) + '</ul></div>' +
+        '<div><b>تحتاج تطوير</b><ul>' + li(a.gaps) + '</ul></div>' +
         '<div><b>المسار المستهدف</b><p>' + esc(a.target || 'غير محدد') + '</p></div>' +
       '</div>' +
+      (await knowledgeBlock(['cv', 'recruitment'], 'توصيات مرام للسيرة الذاتية')) +
       '<p class="metaLine">الملف: ' + esc(report.file_name || 'CV') + ' • ' + esc(fmtDate(report.created_at)) + '</p>' +
       '<button class="primary" onclick="openPanel(\'plan\')">بناء خطة التطوير</button>'
     );
@@ -500,7 +611,8 @@
     const a = report.analysis || {};
     const gaps = a.gaps || [];
     const target = a.target || 'المسار المستهدف';
-    const steps = [
+    const aiSteps = a.mode === 'ai' && Array.isArray(a.plan_steps) && a.plan_steps.length ? a.plan_steps : null;
+    const steps = aiSteps || [
       'إعادة صياغة 3–5 إنجازات في الـCV بأرقام ونتائج قابلة للقياس.',
       gaps[0] ? 'العمل على: ' + gaps[0] + '.' : 'تحديد فجوة مهارية واحدة والعمل عليها.',
       gaps[1] ? 'العمل على: ' + gaps[1] + '.' : 'تحسين الكلمات المفتاحية في السيرة.',
@@ -511,33 +623,35 @@
     show(
       '<span class="eyebrow">خطة تطوير</span><h2>خطتك للأسبوع القادم</h2>' +
       '<ol class="planList">' + steps.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ol>' +
+      (await knowledgeBlock(['development', 'interview'], 'توجيهات مرام للتطوير والمقابلات')) +
       '<button class="primary" onclick="openPanel(\'advisor\')">اسأل مستشار مرام</button>'
     );
+  }
+
+  async function loadApprovedKnowledge() {
+    const r = await db.from('knowledge')
+      .select('id,title,category,body,source_role')
+      .eq('status', 'approved')
+      .order('approved_at', { ascending: false })
+      .limit(200);
+    return r.error ? [] : (r.data || []);
   }
 
   async function advisorAnswer(question) {
     const report = await getLatestReport();
     const a = report?.analysis || {};
     const q = question.trim();
-    const tokens = q.toLowerCase().split(/\s+/).filter((x) => x.length >= 4).slice(0, 10);
 
-    const knowledge = await db.from('knowledge')
-      .select('title,body,source_role,status')
-      .eq('status', 'approved')
-      .limit(100);
-
-    if (!knowledge.error && Array.isArray(knowledge.data)) {
-      const hit = knowledge.data.find((row) => {
-        const hay = ((row.title || '') + ' ' + (row.body || '')).toLowerCase();
-        return tokens.some((t) => hay.includes(t));
+    const hits = rankKnowledge(q, await loadApprovedKnowledge(), 3);
+    if (hits.length) {
+      const parts = hits.map((row, i) => {
+        const body = String(row.body || '').trim();
+        return (hits.length > 1 ? (i + 1) + '. ' : '') + row.title + ': ' + body.slice(0, 520) + (body.length > 520 ? '…' : '');
       });
-      if (hit) {
-        const body = String(hit.body || '');
-        return {
-          answer: 'حسب المرجعية المهنية المعتمدة داخل المنصة: ' + body.slice(0, 800) + (body.length > 800 ? '…' : ''),
-          source: hit.source_role === 'consultant' ? 'approved_consultant' : 'approved_knowledge'
-        };
-      }
+      return {
+        answer: 'حسب المرجعية المهنية المعتمدة داخل المنصة:\n' + parts.join('\n\n'),
+        source: hits.some((h) => h.source_role === 'consultant') ? 'approved_consultant' : 'approved_knowledge'
+      };
     }
 
     const target = a.target || state.profile?.target_field || 'المسار المهني';
@@ -572,6 +686,8 @@
       source: 'test_advisor'
     };
   }
+
+  const statusLabel = (st) => ({ draft: 'مسودة — بانتظار اعتماد وليد', approved: 'معتمدة', paused: 'موقوفة' }[st] || st);
 
   function sourceLabel(source) {
     if (source === 'approved_consultant') return 'مرجعية مرام المعتمدة';
@@ -676,6 +792,9 @@
 
   async function applyJob(jobId) {
     if (!(await requireAuth('jobs'))) return;
+    if ((state.profile?.role || 'candidate') !== 'candidate') {
+      return status('jobsStatus', 'التقديم متاح لحسابات الباحثين عن عمل فقط.', 'error');
+    }
     const r = await db.from('applications').insert({ job_id: jobId, user_id: state.user.id, status: 'submitted' });
     if (r.error && String(r.error.code) !== '23505') return status('jobsStatus', errText(r.error), 'error');
     status('jobsStatus', 'تم تسجيل طلب التقديم.', 'ok');
@@ -694,7 +813,7 @@
       '<div class="listStack">' +
         ((r.data || []).length ? (r.data || []).map((course) =>
           '<div class="hubItem"><b>' + esc(course.title) + '</b><p>' + esc(course.description || '') + '</p>' +
-          (course.url ? '<a class="secondary linkBtn" href="' + esc(course.url) + '" target="_blank" rel="noopener">فتح الدورة</a>' : '<small>لا يوجد رابط معتمد بعد.</small>') +
+          (safeUrl(course.url) ? '<a class="secondary linkBtn" href="' + esc(safeUrl(course.url)) + '" target="_blank" rel="noopener noreferrer">فتح الدورة</a>' : '<small>لا يوجد رابط معتمد بعد.</small>') +
           '</div>'
         ).join('') : '<p>لا توجد دورات منشورة حاليًا.</p>') +
       '</div>'
@@ -752,14 +871,16 @@
   }
 
   async function renderAdmin() {
-    const [feedback, knowledge, companyRequests, profiles] = await Promise.all([
+    const [feedback, knowledge, companyRequests, profiles, jobs, courses] = await Promise.all([
       db.from('consultant_feedback').select('id,title,body,feedback_type,priority,status,admin_note,created_at').order('created_at', { ascending: false }).limit(100),
-      db.from('knowledge').select('id,title,category,status,source_role,created_at,approved_at,created_by').order('created_at', { ascending: false }).limit(100),
+      db.from('knowledge').select('id,title,category,body,status,source_role,created_at,approved_at,created_by').order('created_at', { ascending: false }).limit(100),
       db.from('company_requests').select('id,company_name,work_email,job_title,requirements,status,created_at').order('created_at', { ascending: false }).limit(100),
-      db.from('profiles').select('id,full_name,role,city,created_at').order('created_at', { ascending: false }).limit(100)
+      db.from('profiles').select('id,full_name,role,city,created_at').order('created_at', { ascending: false }).limit(100),
+      db.from('jobs').select('id,title,company,location,status,created_at').order('created_at', { ascending: false }).limit(100),
+      db.from('courses').select('id,title,url,status,created_at').order('created_at', { ascending: false }).limit(100)
     ]);
 
-    const problems = [feedback.error, knowledge.error, companyRequests.error, profiles.error].filter(Boolean);
+    const problems = [feedback.error, knowledge.error, companyRequests.error, profiles.error, jobs.error, courses.error].filter(Boolean);
 
     show(
       '<span class="eyebrow">لوحة وليد</span><h2>إدارة المنصة</h2>' +
@@ -790,9 +911,42 @@
 
       '<h3>المرجعية المهنية</h3><div class="listStack">' +
         ((knowledge.data || []).length ? knowledge.data.map((x) =>
-          '<div class="hubItem"><b>' + esc(x.title) + '</b><small>' + esc(x.category) + ' • ' + esc(x.source_role) + ' • ' + esc(x.status) + '</small>' +
+          '<div class="hubItem"><b>' + esc(x.title) + '</b><small>' + esc(x.category) + ' • ' + esc(x.source_role === 'consultant' ? 'مرام' : x.source_role) + ' • ' + esc(statusLabel(x.status)) + '</small>' +
+          '<p>' + esc(x.body || '') + '</p>' +
           '<div class="hubActions"><button class="secondary" onclick="bttKnowledgeStatus(\'' + x.id + '\',\'approved\')">اعتماد</button><button class="secondary" onclick="bttKnowledgeStatus(\'' + x.id + '\',\'draft\')">إرجاع لمسودة</button><button class="secondary" onclick="bttKnowledgeStatus(\'' + x.id + '\',\'paused\')">إيقاف</button></div></div>'
         ).join('') : '<p>لا توجد مواد معرفية بعد.</p>') +
+      '</div>' +
+
+      '<h3>الوظائف</h3>' +
+      '<form class="form staffForm" id="adminJobForm">' +
+        '<input id="jTitle" required placeholder="المسمى الوظيفي">' +
+        '<input id="jCompany" required placeholder="اسم الشركة">' +
+        '<input id="jLocation" placeholder="الموقع">' +
+        '<textarea id="jDesc" placeholder="وصف الوظيفة"></textarea>' +
+        '<textarea id="jReq" placeholder="المتطلبات (مهارات، خبرة، أدوات) — تُستخدم في نسبة المطابقة"></textarea>' +
+        '<select id="jStatus"><option value="published">منشورة</option><option value="draft">مسودة</option></select>' +
+        '<button class="primary" type="submit">إضافة الوظيفة</button>' +
+      '</form><p id="adminJobStatus" class="status"></p>' +
+      '<div class="listStack">' +
+        ((jobs.data || []).length ? jobs.data.map((x) =>
+          '<div class="hubItem compact"><b>' + esc(x.title) + ' — ' + esc(x.company) + '</b><small>' + esc(x.status) + (x.location ? ' • ' + esc(x.location) : '') + '</small>' +
+          '<div class="hubActions"><button class="secondary" onclick="bttJobStatus(\'' + x.id + '\',\'published\')">نشر</button><button class="secondary" onclick="bttJobStatus(\'' + x.id + '\',\'draft\')">مسودة</button><button class="dangerBtn smallBtn" onclick="bttJobStatus(\'' + x.id + '\',\'closed\')">إغلاق</button></div></div>'
+        ).join('') : '<p>لا توجد وظائف بعد.</p>') +
+      '</div>' +
+
+      '<h3>الدورات</h3>' +
+      '<form class="form staffForm" id="adminCourseForm">' +
+        '<input id="coTitle" required placeholder="اسم الدورة">' +
+        '<textarea id="coDesc" placeholder="وصف قصير"></textarea>' +
+        '<input id="coUrl" type="url" placeholder="رابط الدورة (https://...)">' +
+        '<select id="coStatus"><option value="published">منشورة</option><option value="draft">مسودة</option></select>' +
+        '<button class="primary" type="submit">إضافة الدورة</button>' +
+      '</form><p id="adminCourseStatus" class="status"></p>' +
+      '<div class="listStack">' +
+        ((courses.data || []).length ? courses.data.map((x) =>
+          '<div class="hubItem compact"><b>' + esc(x.title) + '</b><small>' + esc(x.status) + '</small>' +
+          '<div class="hubActions"><button class="secondary" onclick="bttCourseStatus(\'' + x.id + '\',\'published\')">نشر</button><button class="secondary" onclick="bttCourseStatus(\'' + x.id + '\',\'draft\')">مسودة</button></div></div>'
+        ).join('') : '<p>لا توجد دورات بعد.</p>') +
       '</div>' +
 
       '<h3>طلبات الشركات</h3><div class="listStack">' +
@@ -812,6 +966,52 @@
     );
 
     $('adminKnowledgeForm').onsubmit = saveAdminKnowledge;
+    $('adminJobForm').onsubmit = saveJob;
+    $('adminCourseForm').onsubmit = saveCourse;
+  }
+
+  async function saveJob(e) {
+    e.preventDefault();
+    status('adminJobStatus', 'جاري الحفظ...');
+    const r = await db.from('jobs').insert({
+      title: $('jTitle').value.trim(),
+      company: $('jCompany').value.trim(),
+      location: $('jLocation').value.trim() || null,
+      description: $('jDesc').value.trim() || null,
+      requirements: $('jReq').value.trim() || null,
+      status: $('jStatus').value
+    });
+    if (r.error) return status('adminJobStatus', errText(r.error), 'error');
+    status('adminJobStatus', 'تمت إضافة الوظيفة.', 'ok');
+    setTimeout(renderAdmin, 250);
+  }
+
+  async function jobStatus(id, newStatus) {
+    const r = await db.from('jobs').update({ status: newStatus }).eq('id', id);
+    if (r.error) return alert(errText(r.error));
+    renderAdmin();
+  }
+
+  async function saveCourse(e) {
+    e.preventDefault();
+    const rawUrl = $('coUrl').value.trim();
+    if (rawUrl && !safeUrl(rawUrl)) return status('adminCourseStatus', 'الرابط يجب أن يبدأ بـ https:// أو http://', 'error');
+    status('adminCourseStatus', 'جاري الحفظ...');
+    const r = await db.from('courses').insert({
+      title: $('coTitle').value.trim(),
+      description: $('coDesc').value.trim() || null,
+      url: rawUrl ? safeUrl(rawUrl) : null,
+      status: $('coStatus').value
+    });
+    if (r.error) return status('adminCourseStatus', errText(r.error), 'error');
+    status('adminCourseStatus', 'تمت إضافة الدورة.', 'ok');
+    setTimeout(renderAdmin, 250);
+  }
+
+  async function courseStatus(id, newStatus) {
+    const r = await db.from('courses').update({ status: newStatus }).eq('id', id);
+    if (r.error) return alert(errText(r.error));
+    renderAdmin();
   }
 
   async function saveAdminKnowledge(e) {
@@ -867,7 +1067,7 @@
   async function renderConsultant() {
     const [feedback, knowledge] = await Promise.all([
       db.from('consultant_feedback').select('id,title,feedback_type,priority,status,admin_note,created_at').order('created_at', { ascending: false }).limit(100),
-      db.from('knowledge').select('id,title,category,status,source_role,created_at').eq('created_by', state.user.id).order('created_at', { ascending: false }).limit(100)
+      db.from('knowledge').select('id,title,category,body,status,source_role,created_at').eq('created_by', state.user.id).order('created_at', { ascending: false }).limit(100)
     ]);
 
     show(
@@ -901,7 +1101,7 @@
 
       '<h3>مرجعيتي المهنية</h3><div class="listStack">' +
         ((knowledge.data || []).length ? knowledge.data.map((x) =>
-          '<div class="hubItem"><b>' + esc(x.title) + '</b><small>' + esc(x.category) + ' • ' + esc(x.status) + '</small></div>'
+          '<div class="hubItem"><b>' + esc(x.title) + '</b><small>' + esc(x.category) + ' • ' + esc(statusLabel(x.status)) + '</small><p>' + esc(String(x.body || '').slice(0, 240)) + (String(x.body || '').length > 240 ? '…' : '') + '</p></div>'
         ).join('') : '<p>لا توجد مواد بعد.</p>') +
       '</div>' +
 
@@ -1013,6 +1213,8 @@
   window.bttFeedbackStatus = feedbackStatus;
   window.bttKnowledgeStatus = knowledgeStatus;
   window.bttCompanyStatus = companyStatus;
+  window.bttJobStatus = jobStatus;
+  window.bttCourseStatus = courseStatus;
   window.bttSendOwnPasswordReset = async function() {
     if (!(await requireAuth('account'))) return;
     renderForgotPassword(state.user?.email || '');
