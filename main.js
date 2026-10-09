@@ -1053,50 +1053,29 @@
 
   async function renderConsultant() {
     const [feedback, knowledge] = await Promise.all([
-      db.from('consultant_feedback').select('id,title,feedback_type,priority,status,admin_note,created_at').order('created_at', { ascending: false }).limit(100),
-      db.from('knowledge').select('id,title,category,body,status,source_role,created_at').eq('created_by', state.user.id).order('created_at', { ascending: false }).limit(100)
+      db.from('consultant_feedback').select('id,title,body,feedback_type,priority,status,admin_note,created_at').eq('consultant_id',state.user.id).order('created_at',{ascending:false}).limit(100),
+      db.from('knowledge').select('id,title,category,body,status,created_at,approved_at').eq('created_by',state.user.id).order('created_at',{ascending:false}).limit(100)
     ]);
-
+    const issues=[feedback.error,knowledge.error].filter(Boolean), notes=feedback.data||[], articles=knowledge.data||[];
+    const pending=articles.filter(x=>x.status==='draft'), approved=articles.filter(x=>x.status==='approved');
+    const labels={new:'جديدة',reviewed:'تمت المراجعة',accepted:'معتمدة',implemented:'تم التنفيذ',rejected:'مرفوضة',draft:'بانتظار اعتماد وليد',approved:'معتمدة',paused:'موقوفة'};
+    const cats={cv:'السيرة الذاتية',interview:'المقابلات',development:'التطوير والتدريب',recruitment:'التوظيف',other:'أخرى'};
+    const item=(x,kind)=>'<div class="hubItem"><b>'+esc(x.title)+'</b><small>'+esc(kind==='note'?(labels[x.status]||x.status):((cats[x.category]||x.category)+' · '+(labels[x.status]||x.status)))+' · '+esc(fmtDate(x.created_at))+'</small><p>'+esc(x.body||'')+'</p>'+(x.admin_note?'<p><b>رد وليد:</b> '+esc(x.admin_note)+'</p>':'')+'</div>';
+    const list=(rows,kind,empty)=>rows.length?'<div class="listStack">'+rows.map(x=>item(x,kind)).join('')+'</div>':'<p class="maramEmpty">'+esc(empty)+'</p>';
     show(
-      '<span class="eyebrow">مساحة مرام</span><h2>المستشارة المهنية</h2>' +
-      '<div class="hubIdentity"><div><b>مرام — Consultant</b><small>' + esc(state.user.email) + '</small></div><span>مرجعية مهنية</span></div>' +
-      '<p class="testNotice">مرام لا تملك صلاحيات Admin. ترسل الملاحظات وتضيف المرجعية كمسودة، والاعتماد النهائي من وليد.</p>' +
-
-      '<h3>إرسال ملاحظة أو توصية</h3>' +
-      '<form class="form staffForm" id="consultantFeedbackForm">' +
-        '<select id="fType"><option value="suggestion">اقتراح</option><option value="observation">ملاحظة</option><option value="data">بيانات مفيدة</option><option value="correction">تصحيح</option><option value="feature_request">طلب تطوير</option></select>' +
-        '<select id="fPriority"><option value="normal">أولوية عادية</option><option value="high">أولوية عالية</option><option value="low">أولوية منخفضة</option></select>' +
-        '<input id="fTitle" required placeholder="عنوان الملاحظة">' +
-        '<textarea id="fBody" required placeholder="الملاحظة أو التوصية أو البيانات المفيدة"></textarea>' +
-        '<button class="primary" type="submit">إرسال إلى وليد</button>' +
-      '</form><p id="consultantFeedbackStatus" class="status"></p>' +
-
-      '<h3>إضافة مرجعية مهنية</h3>' +
-      '<form class="form staffForm" id="consultantKnowledgeForm">' +
-        '<input id="cKTitle" required placeholder="عنوان المعرفة">' +
-        '<select id="cKCategory"><option value="cv">السيرة الذاتية</option><option value="interview">المقابلات</option><option value="development">التطوير والتدريب</option><option value="recruitment">التوظيف</option><option value="other">أخرى</option></select>' +
-        '<textarea id="cKBody" required placeholder="المعلومة أو المنهج أو التوجيه المهني"></textarea>' +
-        '<button class="primary" type="submit">حفظ وإرسال للمراجعة</button>' +
-      '</form><p id="consultantKnowledgeStatus" class="status"></p>' +
-
-      '<h3>متابعة ملاحظاتي</h3><div class="listStack">' +
-        ((feedback.data || []).length ? feedback.data.map((x) =>
-          '<div class="hubItem"><b>' + esc(x.title) + '</b><small>' + esc(x.feedback_type) + ' • ' + esc(x.priority) + ' • ' + esc(x.status) + '</small>' +
-          (x.admin_note ? '<p><b>رد الإدارة:</b> ' + esc(x.admin_note) + '</p>' : '') + '</div>'
-        ).join('') : '<p>لا توجد ملاحظات مرسلة بعد.</p>') +
-      '</div>' +
-
-      '<h3>مرجعيتي المهنية</h3><div class="listStack">' +
-        ((knowledge.data || []).length ? knowledge.data.map((x) =>
-          '<div class="hubItem"><b>' + esc(x.title) + '</b><small>' + esc(x.category) + ' • ' + esc(statusLabel(x.status)) + '</small><p>' + esc(String(x.body || '').slice(0, 240)) + (String(x.body || '').length > 240 ? '…' : '') + '</p></div>'
-        ).join('') : '<p>لا توجد مواد بعد.</p>') +
-      '</div>' +
-
-      '<button class="dangerBtn fullBtn" onclick="bttSignOut()">تسجيل الخروج</button>'
+      '<div class="maramDashboard"><div class="maramWelcome"><span class="eyebrow">مساحتك المهنية الخاصة</span><h2>أهلًا مرام 👋</h2><p>خبرتك المهنية تساعد الباحثين عن عمل. أضيفي توجيهاتك، تابعي اعتمادها، وأرسلي ملاحظاتك لوليد.</p><small>'+esc(state.user.email)+' · مستشارة مهنية</small></div>'+
+      (issues.length?'<p class="status error">تعذر تحميل بعض البيانات: '+esc(issues.map(errText).join(' | '))+'</p>':'')+
+      '<div class="maramStats"><div><b>'+articles.length+'</b><span>مواد أضفتها</span></div><div><b>'+pending.length+'</b><span>بانتظار الاعتماد</span></div><div><b>'+approved.length+'</b><span>مواد معتمدة</span></div><div><b>'+notes.length+'</b><span>ملاحظاتي</span></div></div>'+
+      '<nav class="maramNav"><a href="#maram-add">أضيفي خبرتك</a><a href="#maram-feedback">صندوق التوصيات</a><a href="#maram-pending">بانتظار الاعتماد</a><a href="#maram-approved">المواد المعتمدة</a><a href="#maram-followup">متابعة ملاحظاتي</a></nav>'+
+      '<section class="maramSection" id="maram-add"><h3>أضيفي خبرتك المهنية</h3><p>تُحفظ المادة كمسودة. لا تُستخدم في المنصة قبل مراجعة وليد واعتمادها.</p><form class="form staffForm" id="consultantKnowledgeForm"><label for="cKTitle">عنوان المادة</label><input id="cKTitle" required maxlength="180" placeholder="مثال: كيف تكتب إنجازاتك بالأرقام؟"><label for="cKCategory">المجال</label><select id="cKCategory"><option value="cv">السيرة الذاتية</option><option value="interview">المقابلات</option><option value="development">التطوير والتدريب</option><option value="recruitment">التوظيف</option><option value="other">أخرى</option></select><label for="cKBody">التوجيه المهني</label><textarea id="cKBody" required minlength="20" placeholder="اكتبي نصائح عملية وأمثلة واضحة..."></textarea><button class="primary" type="submit">إرسال المادة للمراجعة</button></form><p id="consultantKnowledgeStatus" class="status" role="status"></p></section>'+
+      '<section class="maramSection" id="maram-feedback"><h3>صندوق التوصيات والملاحظات</h3><p>أرسلي اقتراحًا أو تصحيحًا إلى وليد وتابعي حالته والرد عليه.</p><form class="form staffForm" id="consultantFeedbackForm"><label for="fType">نوع الرسالة</label><select id="fType"><option value="suggestion">اقتراح</option><option value="observation">ملاحظة</option><option value="data">بيانات مفيدة</option><option value="correction">تصحيح</option><option value="feature_request">طلب تطوير</option></select><label for="fPriority">الأولوية</label><select id="fPriority"><option value="normal">عادية</option><option value="high">عالية</option><option value="low">منخفضة</option></select><label for="fTitle">العنوان</label><input id="fTitle" required maxlength="180" placeholder="عنوان مختصر"><label for="fBody">التفاصيل</label><textarea id="fBody" required placeholder="اشرحي الملاحظة أو التوصية..."></textarea><button class="primary" type="submit">إرسال إلى وليد</button></form><p id="consultantFeedbackStatus" class="status" role="status"></p></section>'+
+      '<section class="maramSection" id="maram-pending"><h3>بانتظار اعتماد وليد ('+pending.length+')</h3>'+list(pending,'knowledge','لا توجد مواد بانتظار الاعتماد.')+'</section>'+
+      '<section class="maramSection" id="maram-approved"><h3>المواد المعتمدة ('+approved.length+')</h3><p>هذه المواد متاحة لمرجعية المنصة وتحليل السير ومستشار مرام بحسب صلتها بالمحتوى؛ اعتماد المادة لا يعني استخدامها في كل تحليل.</p>'+list(approved,'knowledge','لا توجد مواد معتمدة بعد.')+'</section>'+
+      '<section class="maramSection" id="maram-followup"><h3>متابعة ملاحظاتي ('+notes.length+')</h3>'+list(notes,'note','لم ترسلي ملاحظات بعد.')+'</section>'+
+      '<button class="secondary fullBtn" onclick="openPanel(\'account\')">العودة إلى حسابي</button><button class="dangerBtn fullBtn" onclick="bttSignOut()">تسجيل الخروج</button></div>'
     );
-
-    $('consultantFeedbackForm').onsubmit = submitConsultantFeedback;
-    $('consultantKnowledgeForm').onsubmit = submitConsultantKnowledge;
+    $('consultantFeedbackForm').onsubmit=submitConsultantFeedback;
+    $('consultantKnowledgeForm').onsubmit=submitConsultantKnowledge;
   }
 
   async function submitConsultantFeedback(e) {
