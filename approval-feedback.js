@@ -215,6 +215,74 @@
     if (summary.textContent !== label) summary.textContent = label;
   }
 
+
+  function updateMaramDecisionBadges() {
+    const panel = document.getElementById('panelContent');
+    if (!panel) return;
+
+    const sections = [
+      ['maram-followup', 'feedback'],
+      ['maram-pending', 'knowledge'],
+      ['maram-approved', 'knowledge']
+    ];
+
+    for (const [sectionId, kind] of sections) {
+      const section = panel.querySelector('#' + sectionId);
+      if (!section) continue;
+      for (const card of section.querySelectorAll('.hubItem')) {
+        const meta = card.querySelector('small')?.textContent || '';
+        let label = '';
+        let tone = '';
+
+        if (kind === 'feedback') {
+          if (/مرفوضة/.test(meta)) {
+            label = 'لم يتم الاعتماد';
+            tone = 'rejected';
+          } else if (/تم التنفيذ/.test(meta)) {
+            label = 'تم الاعتماد والتنفيذ';
+            tone = 'approved';
+          } else if (/معتمدة/.test(meta)) {
+            label = 'تم الاعتماد';
+            tone = 'approved';
+          } else if (/تمت المراجعة/.test(meta)) {
+            label = 'قيد المراجعة — لم يصدر قرار بعد';
+            tone = 'review';
+          } else if (/جديدة/.test(meta)) {
+            label = 'لم يتم الاعتماد بعد — بانتظار مراجعة وليد';
+            tone = 'pending';
+          }
+        } else if (sectionId === 'maram-approved' || /معتمدة/.test(meta)) {
+          label = 'تم اعتماد المادة';
+          tone = 'approved';
+        } else if (/بانتظار اعتماد وليد/.test(meta)) {
+          label = 'لم يتم الاعتماد بعد — بانتظار مراجعة وليد';
+          tone = 'pending';
+        }
+
+        if (!label) continue;
+        const title = card.querySelector('b');
+        if (!title) continue;
+        let badge = card.querySelector('.bttMaramDecision');
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'bttMaramDecision';
+          badge.setAttribute('role', 'status');
+          badge.style.cssText = 'display:inline-block;margin:6px 8px 6px 0;padding:5px 10px;border-radius:999px;font-size:.82em;font-weight:700;line-height:1.5';
+          title.insertAdjacentElement('afterend', badge);
+        }
+
+        const colors = {
+          approved: 'background:#dcfce7;color:#166534',
+          rejected: 'background:#fee2e2;color:#991b1b',
+          pending: 'background:#fef3c7;color:#92400e',
+          review: 'background:#dbeafe;color:#1e40af'
+        };
+        badge.textContent = label;
+        badge.style.cssText = 'display:inline-block;margin:6px 8px 6px 0;padding:5px 10px;border-radius:999px;font-size:.82em;font-weight:700;line-height:1.5;' + colors[tone];
+      }
+    }
+  }
+
   const feedbackPanel = document.getElementById('panelContent');
   if (feedbackPanel && !window.bttFeedbackArchiveObserver) {
     window.bttFeedbackArchiveObserver = new MutationObserver(() => {
@@ -223,9 +291,11 @@
       setTimeout(() => {
         window.bttFeedbackArchiveScheduled = false;
         updateRecommendationArchive();
+        updateMaramDecisionBadges();
       }, 0);
     });
     window.bttFeedbackArchiveObserver.observe(feedbackPanel, { childList: true, subtree: true });
     updateRecommendationArchive();
+    updateMaramDecisionBadges();
   }
 })();
