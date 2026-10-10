@@ -165,4 +165,67 @@
 
     showApprovalToast('لم يتأكد حفظ التغيير. حدّث لوحة وليد وتحقق من الحالة قبل إعادة المحاولة.', 'error');
   };
+
+  // Keep accepted consultant recommendations out of the active inbox.
+  // This presentation layer preserves the existing database workflow and places
+  // the original cards in a collapsible archive so Waleed can reopen them.
+  function feedbackCardIsAccepted(card) {
+    return [...card.querySelectorAll('small')].some((label) =>
+      label.textContent.split('•').some((part) => part.trim() === 'accepted')
+    );
+  }
+
+  function updateRecommendationArchive() {
+    const panel = document.getElementById('panelContent');
+    if (!panel) return;
+    const heading = [...panel.querySelectorAll('h3')].find((item) =>
+      item.textContent.trim().startsWith('صندوق مرام')
+    );
+    const activeList = heading?.nextElementSibling;
+    if (!activeList?.classList.contains('listStack')) return;
+
+    let archive = panel.querySelector('#bttFeedbackArchive');
+    if (!archive) {
+      archive = document.createElement('details');
+      archive.id = 'bttFeedbackArchive';
+      archive.style.cssText = 'margin:12px 0 22px;padding:12px 14px;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc';
+      const summary = document.createElement('summary');
+      summary.style.cssText = 'cursor:pointer;font-weight:700;color:#334155';
+      const description = document.createElement('p');
+      description.textContent = 'التوصيات المعتمدة محفوظة هنا، ويمكن فتحها ومراجعتها في أي وقت.';
+      description.style.cssText = 'margin:10px 0;color:#64748b;font-size:.92em';
+      const archivedList = document.createElement('div');
+      archivedList.id = 'bttFeedbackArchiveList';
+      archivedList.className = 'listStack';
+      archive.append(summary, description, archivedList);
+      activeList.insertAdjacentElement('afterend', archive);
+    }
+
+    const archivedList = archive.querySelector('#bttFeedbackArchiveList');
+    for (const card of [...activeList.querySelectorAll(':scope > .hubItem')]) {
+      if (feedbackCardIsAccepted(card)) archivedList.appendChild(card);
+    }
+    for (const card of [...archivedList.querySelectorAll(':scope > .hubItem')]) {
+      if (!feedbackCardIsAccepted(card)) activeList.appendChild(card);
+    }
+
+    const count = archivedList.querySelectorAll(':scope > .hubItem').length;
+    const label = 'أرشيف التوصيات المعتمدة (' + count + ')';
+    const summary = archive.querySelector('summary');
+    if (summary.textContent !== label) summary.textContent = label;
+  }
+
+  const feedbackPanel = document.getElementById('panelContent');
+  if (feedbackPanel && !window.bttFeedbackArchiveObserver) {
+    window.bttFeedbackArchiveObserver = new MutationObserver(() => {
+      if (window.bttFeedbackArchiveScheduled) return;
+      window.bttFeedbackArchiveScheduled = true;
+      setTimeout(() => {
+        window.bttFeedbackArchiveScheduled = false;
+        updateRecommendationArchive();
+      }, 0);
+    });
+    window.bttFeedbackArchiveObserver.observe(feedbackPanel, { childList: true, subtree: true });
+    updateRecommendationArchive();
+  }
 })();
