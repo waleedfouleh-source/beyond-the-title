@@ -277,7 +277,7 @@
           pending: 'background:#fef3c7;color:#92400e',
           review: 'background:#dbeafe;color:#1e40af'
         };
-        badge.textContent = label;
+        if (badge.textContent !== label) badge.textContent = label;
         badge.style.cssText = 'display:inline-block;margin:6px 8px 6px 0;padding:5px 10px;border-radius:999px;font-size:.82em;font-weight:700;line-height:1.5;' + colors[tone];
       }
     }
