@@ -117,7 +117,7 @@
         const uploaded = await db.storage.from("cv-files").upload(path, file, { contentType: file.type || (/\.pdf$/i.test(file.name) ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), upsert: false });
         if (uploaded.error) { button.disabled = false; status.textContent = uploaded.error.message || "تعذر رفع الملف."; return; }
         status.textContent = "جاري تحليل السيرة…";
-        const analyzed = await db.functions.invoke("analyze-cv", { body: { file_path: path, file_name: file.name } });
+        const analyzed = await db.functions.invoke("analyze-cv", { body: { file_path: path, file_name: file.name } }).catch((error) => ({ data: null, error }));
         if (analyzed.error || !analyzed.data?.report) {
           button.disabled = false;
           let detail = analyzed.data?.message || analyzed.error?.message || "تعذر التحليل.";
