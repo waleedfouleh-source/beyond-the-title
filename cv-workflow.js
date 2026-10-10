@@ -102,6 +102,8 @@
   window.openPanel = async function(route, ...args) {
     const result = await baseOpen(route, ...args);
     if (route === "upload") {
+      const privacyNote = panel.querySelector(".testNotice");
+      if (privacyNote) privacyNote.textContent = "تُحفظ سيرتك الذاتية في مساحة خاصة بحسابك، ولا تكون متاحة لمستخدمين آخرين في المنصة. وبعد موافقتك، يُرسل محتواها إلى Google Gemini لتحليل الخبرات وإعداد أسئلة ونسخة محسّنة.";
       const input = document.getElementById("cvFile");
       const button = document.getElementById("cvUploadButton");
       if (input && button) button.onclick = async () => {
