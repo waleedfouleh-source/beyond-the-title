@@ -376,20 +376,15 @@
     if (state.profile?.role === 'consultant') return openPanel('staff');
 
     const p = state.profile || {};
-    const skills = Array.isArray(p.skills) ? p.skills.join('، ') : '';
-    const fields = ['المبيعات', 'التسويق', 'الإدارة', 'التكنولوجيا', 'الموارد البشرية', 'أخرى'];
     show(
       '<span class="eyebrow">ملفك المهني</span><h2>خلّينا نتعرّف عليك</h2>' +
-      '<p>هذه البيانات تستخدم في المطابقة، تقرير الاختبار وخطة التطوير.</p>' +
+      '<p>احكيلنا باختصار عن حالك، وشو حابب نساعدك فيه. بعدها ارفع سيرتك الذاتية لنبدأ.</p>' +
       '<form class="form" id="profileForm">' +
-        '<input id="pName" required placeholder="الاسم الكامل" value="' + esc(p.full_name || '') + '">' +
-        '<input id="pCity" placeholder="المدينة" value="' + esc(p.city || '') + '">' +
-        '<input id="pExperience" type="number" min="0" max="60" placeholder="سنوات الخبرة" value="' + esc(p.experience_years ?? '') + '">' +
-        '<select id="pField"><option value="">المجال المطلوب</option>' +
-          fields.map((f) => '<option value="' + esc(f) + '"' + (p.target_field === f ? ' selected' : '') + '>' + esc(f) + '</option>').join('') +
-        '</select>' +
-        '<input id="pSkills" placeholder="المهارات، افصل بينها بفاصلة" value="' + esc(skills) + '">' +
-        '<button class="primary" id="profileSave" type="submit">حفظ ومتابعة إلى الـCV</button>' +
+        '<label for="pIntro">نبذة عنك وكيف حابب نساعدك</label>' +
+        '<textarea id="pIntro" required maxlength="700" rows="5" placeholder="مثال: أنا خريج إدارة أعمال وعندي خبرة في المبيعات. حابب أطور سيرتي الذاتية وأعرف الوظائف المناسبة إلي.">' + esc(p.headline || '') + '</textarea>' +
+        '<small class="formHint">اكتب عن مجالك أو هدفك المهني ونوع الدعم الذي تحتاجه.</small>' +
+        '<p class="privacyNote">نلتزم بالحفاظ على سرية معلوماتك الشخصية والسيرة الذاتية، والتعامل معها بمهنية ومسؤولية، بما يضمن احترام خصوصيتك وحماية بياناتك وفقًا لسياسة الخصوصية المعتمدة لدينا.</p>' +
+        '<button class="primary" id="profileSave" type="submit">حفظ ومتابعة لرفع السيرة الذاتية</button>' +
       '</form><p id="profileStatus" class="status"></p>'
     );
     $('profileForm').onsubmit = saveProfile;
@@ -397,17 +392,18 @@
 
   async function saveProfile(e) {
     e.preventDefault();
+    const intro = $('pIntro').value.trim();
+    if (!intro) {
+      status('profileStatus', 'اكتب نبذة قصيرة عنك وكيف حابب نساعدك قبل المتابعة.', 'error');
+      $('pIntro').focus();
+      return;
+    }
     const btn = $('profileSave');
     btn.disabled = true;
     status('profileStatus', 'جاري الحفظ...');
 
-    const exp = $('pExperience').value;
     const patch = {
-      full_name: $('pName').value.trim(),
-      city: $('pCity').value.trim() || null,
-      experience_years: exp === '' ? null : Number(exp),
-      target_field: $('pField').value || null,
-      skills: $('pSkills').value.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
+      headline: intro,
       updated_at: new Date().toISOString()
     };
 
@@ -415,7 +411,7 @@
     btn.disabled = false;
     if (error) return status('profileStatus', errText(error), 'error');
     state.profile = { ...(state.profile || {}), ...patch };
-    status('profileStatus', 'تم حفظ الملف المهني بنجاح.', 'ok');
+    status('profileStatus', 'تم حفظ نبذتك المهنية. جاري نقلك لرفع السيرة الذاتية...', 'ok');
     setTimeout(() => renderUpload(), 300);
   }
 
