@@ -5,7 +5,7 @@
 // Secrets (Supabase → Edge Functions → Secrets):
 //   GEMINI_API_KEY   required   (free key from https://aistudio.google.com/apikey)
 //   GEMINI_MODEL     optional   (first model to try; see FALLBACK_MODELS below)
-//   AI_DAILY_LIMIT   optional   (AI analyses per user per 24h, default 3)
+//   AI_DAILY_LIMIT   optional   (AI analyses per user per 24h, minimum 10; default 10)
 // SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -184,7 +184,9 @@ export async function handler(req: Request): Promise<Response> {
     if (!["pdf", "docx"].includes(ext)) return json({ error: "unsupported_type", message: "الصيغ المدعومة: PDF وDOCX." }, 415);
 
     // daily limit (protects the free Gemini quota)
-    const limit = Number(Deno.env.get("AI_DAILY_LIMIT") ?? 3);
+    const configuredLimit = Number(Deno.env.get("AI_DAILY_LIMIT") ?? 10);
+    // Keep older deployments configured at 3 from blocking users after only a few uploads.
+    const limit = Number.isFinite(configuredLimit) ? Math.max(10, Math.floor(configuredLimit)) : 10;
     const admin = createClient(url, service);
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const used = await admin.from("cv_reports").select("id", { count: "exact", head: true })
