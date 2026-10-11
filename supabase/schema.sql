@@ -451,6 +451,9 @@ create index if not exists idx_knowledge_approved_by
 alter table public.profiles add column if not exists experience_years integer;
 alter table public.profiles add column if not exists target_field text;
 alter table public.profiles add column if not exists updated_at timestamptz default now();
+alter table public.profiles add column if not exists cv_file_path text;
+alter table public.profiles add column if not exists cv_file_name text;
+alter table public.profiles add column if not exists cv_uploaded_at timestamptz;
 
 alter table public.cv_reports add column if not exists file_name text;
 alter table public.cv_reports add column if not exists status text not null default 'ready';
