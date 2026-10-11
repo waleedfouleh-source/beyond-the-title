@@ -201,13 +201,13 @@ export async function handler(req: Request): Promise<Response> {
 
     // context: profile + approved guidance
     const [prof, kn] = await Promise.all([
-      userClient.from("profiles").select("full_name,city,skills,experience_years,target_field").eq("id", user.id).maybeSingle(),
+      userClient.from("profiles").select("full_name,city,headline,skills,experience_years,target_field").eq("id", user.id).maybeSingle(),
       userClient.from("knowledge").select("id,title,category,body,source_role").eq("status", "approved").limit(80),
     ]);
     const p: any = prof.data || {};
     const guidance = buildGuidance(kn.data || []);
 
-    const profileText = `CANDIDATE PROFILE (self-reported): city=${p.city ?? "-"}; years_experience=${p.experience_years ?? "-"}; target_field=${p.target_field ?? "-"}; skills=${Array.isArray(p.skills) ? p.skills.join(", ") : "-"}`;
+    const profileText = `CANDIDATE PROFILE (self-reported): intro_and_help_requested=${p.headline ?? "-"}; city=${p.city ?? "-"}; years_experience=${p.experience_years ?? "-"}; target_field=${p.target_field ?? "-"}; skills=${Array.isArray(p.skills) ? p.skills.join(", ") : "-"}`;
     const guidanceText = guidance.text
       ? `PLATFORM GUIDANCE (approved by the consultant):\n${guidance.text}`
       : "PLATFORM GUIDANCE: none approved yet. Use general best practice and return an empty applied_guidance.";
