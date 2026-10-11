@@ -634,7 +634,7 @@
     if (isAi) {
       const imps = (a.cv_improvements || []).map((x) =>
         '<div class="hubItem"><b>' + esc(x.section || 'السيرة') + '</b><p>' + esc(x.issue || '') + '</p><p><b>التعديل المقترح:</b> ' + esc(x.fix || '') + '</p></div>').join('');
-      const applied = (a.applied_guidance || []).map((g) => esc(g.title)).join('، ');
+      const applied = (a.applied_guidance || []).filter((g) => String(g.title || '').trim() !== 'الخبرة المهنية').map((g) => esc(g.title)).join('، ');
       aiExtra =
         (a.summary ? '<p>' + esc(a.summary) + '</p>' : '') +
         (a.score_reason ? '<p class="metaLine">سبب التقييم: ' + esc(a.score_reason) + '</p>' : '') +
