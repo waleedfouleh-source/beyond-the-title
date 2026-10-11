@@ -678,11 +678,11 @@
     return 'منطق نسخة الاختبار';
   }
 
-  async function renderAdvisor() {
+  async function renderAdvisor(successMessage = '') {
     if (!(await requireAuth('advisor'))) return;
 
-    const history = await db.from('advisor_messages')
-      .select('id,question,answer,source_type,created_at')
+    const history = await db.from('advisor_questions')
+      .select('id,question,status,admin_reply,created_at,replied_at')
       .eq('user_id', state.user.id)
       .order('created_at', { ascending: true })
       .limit(40);
@@ -690,18 +690,21 @@
     const rows = history.data || [];
     show(
       '<span class="eyebrow">مستشار مرام</span><h2>شو حابب تعرف عن مسارك؟</h2>' +
-      '<p class="testNotice">المحادثة تعمل وتُحفظ. تستخدم المرجعية المعتمدة عندما يوجد تطابق، وإلا تستخدم منطق نسخة الاختبار — وليس نموذج AI خارجي كامل حتى الآن.</p>' +
+      '<p class="testNotice">اكتب سؤالك وسيراجعه فريق المنصة، وسنرسل لك الإجابة هنا في أقرب وقت. أسئلتك وردودنا خاصة بحسابك.</p>' +
       '<div class="chat" id="advisorChat">' +
         (rows.length ? rows.map((m) =>
           '<div class="bubble me">' + esc(m.question) + '</div>' +
-          '<div class="bubble">' + esc(m.answer) + '<small>' + esc(sourceLabel(m.source_type)) + '</small></div>'
+          (m.admin_reply
+            ? '<div class="bubble">' + esc(m.admin_reply) + '<small>رد فريق المنصة' + (m.replied_at ? ' · ' + esc(fmtDate(m.replied_at)) : '') + '</small></div>'
+            : '<div class="bubble">' + (m.status === 'in_review' ? 'سؤالك قيد المراجعة.' : 'تم استلام سؤالك، وسنراجعه ونجيبك في أقرب وقت.') + '<small>بانتظار الرد</small></div>')
         ).join('') : '<div class="bubble">اسألني عن الوظائف، السيرة الذاتية، المقابلات أو المهارات.</div>') +
       '</div>' +
-      '<form class="form advisorForm" id="advisorForm"><input id="advisorQuestion" autocomplete="off" placeholder="اكتب سؤالك هنا..."><button class="primary" id="advisorSend" type="submit">إرسال</button></form>' +
-      '<p id="advisorStatus" class="status"></p>'
+      '<form class="form advisorForm" id="advisorForm"><textarea id="advisorQuestion" required maxlength="3000" rows="3" placeholder="اكتب سؤالك هنا..."></textarea><button class="primary" id="advisorSend" type="submit">إرسال السؤال</button></form>' +
+      '<p id="advisorStatus" class="status" role="status" aria-live="polite"></p>'
     );
 
     $('advisorForm').onsubmit = sendAdvisor;
+    if (successMessage) status('advisorStatus', successMessage, 'ok');
     const chat = $('advisorChat');
     if (chat) chat.scrollTop = chat.scrollHeight;
   }
@@ -710,21 +713,20 @@
     e.preventDefault();
     const question = $('advisorQuestion').value.trim();
     if (!question) return status('advisorStatus', 'اكتب السؤال أولًا.', 'error');
+    if (question.length > 3000) return status('advisorStatus', 'السؤال طويل. اختصره إلى 3000 حرف كحد أقصى.', 'error');
 
     const btn = $('advisorSend');
     btn.disabled = true;
-    status('advisorStatus', 'جاري تجهيز الإجابة...');
+    status('advisorStatus', 'جاري إرسال سؤالك...');
 
     try {
-      const answer = await advisorAnswer(question);
-      const saved = await db.from('advisor_messages').insert({
+      const saved = await db.from('advisor_questions').insert({
         user_id: state.user.id,
         question,
-        answer: answer.answer,
-        source_type: answer.source
+        status: 'new'
       });
       if (saved.error) throw saved.error;
-      await renderAdvisor();
+      await renderAdvisor('وصل سؤالك. سنراجعه ونجيبك في أقرب وقت.');
     } catch (error) {
       status('advisorStatus', errText(error), 'error');
       btn.disabled = false;
@@ -854,16 +856,18 @@
   }
 
   async function renderAdmin() {
-    const [feedback, knowledge, companyRequests, profiles, jobs, courses] = await Promise.all([
+    const [feedback, knowledge, companyRequests, profiles, jobs, courses, advisorQuestions] = await Promise.all([
       db.from('consultant_feedback').select('id,title,body,feedback_type,priority,status,admin_note,created_at').order('created_at', { ascending: false }).limit(100),
       db.from('knowledge').select('id,title,category,body,status,source_role,created_at,approved_at,created_by').order('created_at', { ascending: false }).limit(100),
       db.from('company_requests').select('id,company_name,work_email,job_title,requirements,status,created_at').order('created_at', { ascending: false }).limit(100),
       db.from('profiles').select('id,full_name,role,city,created_at').order('created_at', { ascending: false }).limit(100),
       db.from('jobs').select('id,title,company,location,status,created_at').order('created_at', { ascending: false }).limit(100),
-      db.from('courses').select('id,title,url,status,created_at').order('created_at', { ascending: false }).limit(100)
+      db.from('courses').select('id,title,url,status,created_at').order('created_at', { ascending: false }).limit(100),
+      db.from('advisor_questions').select('id,user_id,question,status,admin_reply,created_at,replied_at').order('created_at', { ascending: false }).limit(100)
     ]);
 
-    const problems = [feedback.error, knowledge.error, companyRequests.error, profiles.error, jobs.error, courses.error].filter(Boolean);
+    const problems = [feedback.error, knowledge.error, companyRequests.error, profiles.error, jobs.error, courses.error, advisorQuestions.error].filter(Boolean);
+    const profileById = new Map((profiles.data || []).map((x) => [x.id, x]));
 
     show(
       '<span class="eyebrow">لوحة وليد</span><h2>إدارة المنصة</h2>' +
@@ -873,8 +877,19 @@
         '<div><b>' + (profiles.data || []).length + '</b><p>مستخدمون</p></div>' +
         '<div><b>' + (feedback.data || []).filter((x) => x.status === 'new').length + '</b><p>ملاحظات جديدة</p></div>' +
         '<div><b>' + (companyRequests.data || []).filter((x) => x.status === 'new').length + '</b><p>طلبات شركات جديدة</p></div>' +
+        '<div><b>' + (advisorQuestions.data || []).filter((x) => x.status !== 'answered').length + '</b><p>أسئلة بانتظار الرد</p></div>' +
       '</div>' +
       '<button class="secondary fullBtn" onclick="openPanel(\'system-check\')">تشغيل فحص النظام الآن</button>' +
+
+      '<h3>أسئلة المستخدمين</h3><p>الأسئلة تصل إلى هذا الصندوق، ويمكنك كتابة الرد ليظهر لصاحب السؤال داخل حسابه.</p><div class="listStack">' +
+        ((advisorQuestions.data || []).length ? advisorQuestions.data.map((x) => {
+          const profile = profileById.get(x.user_id);
+          const statusText = { new: 'جديد', in_review: 'قيد المراجعة', answered: 'تم الرد' }[x.status] || x.status;
+          return '<div class="hubItem"><b>' + esc(profile?.full_name || 'مستخدم مسجل') + '</b><small>' + esc(statusText) + ' · ' + esc(fmtDate(x.created_at)) + '</small><p>' + esc(x.question) + '</p>' +
+            '<textarea id="advisor-reply-' + x.id + '" maxlength="3000" placeholder="اكتب ردك هنا؛ سيظهر للمستخدم عند فتحه مستشار مرام">' + esc(x.admin_reply || '') + '</textarea>' +
+            '<div class="hubActions"><button class="secondary" onclick="bttAdvisorQuestionStatus(\'' + x.id + '\',\'in_review\')">قيد المراجعة</button><button class="primary" onclick="bttAdvisorQuestionReply(\'' + x.id + '\')">حفظ وإرسال الرد</button></div></div>';
+        }).join('') : '<p>لا توجد أسئلة حتى الآن.</p>') +
+      '</div>' +
 
       '<h3>إضافة مرجعية إدارية</h3>' +
       '<form class="form staffForm" id="adminKnowledgeForm">' +
@@ -1047,6 +1062,26 @@
     renderAdmin();
   }
 
+  async function advisorQuestionStatus(id, newStatus) {
+    const r = await db.from('advisor_questions').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id);
+    if (r.error) return alert(errText(r.error));
+    renderAdmin();
+  }
+
+  async function advisorQuestionReply(id) {
+    const reply = $('advisor-reply-' + id)?.value.trim();
+    if (!reply) return alert('اكتب الرد أولًا.');
+    const now = new Date().toISOString();
+    const r = await db.from('advisor_questions').update({
+      admin_reply: reply,
+      status: 'answered',
+      replied_at: now,
+      updated_at: now
+    }).eq('id', id);
+    if (r.error) return alert(errText(r.error));
+    renderAdmin();
+  }
+
   async function renderConsultant() {
     const [feedback, knowledge] = await Promise.all([
       db.from('consultant_feedback').select('id,title,body,feedback_type,priority,status,admin_note,created_at').eq('consultant_id',state.user.id).order('created_at',{ascending:false}).limit(100),
@@ -1177,6 +1212,8 @@
   window.bttCompanyStatus = companyStatus;
   window.bttJobStatus = jobStatus;
   window.bttCourseStatus = courseStatus;
+  window.bttAdvisorQuestionStatus = advisorQuestionStatus;
+  window.bttAdvisorQuestionReply = advisorQuestionReply;
   window.bttSendOwnPasswordReset = async function() {
     if (!(await requireAuth('account'))) return;
     renderForgotPassword(state.user?.email || '');
