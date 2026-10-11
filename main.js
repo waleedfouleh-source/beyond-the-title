@@ -134,7 +134,7 @@
     }
     state.user = data.user;
     const p = await db.from('profiles')
-      .select('id,full_name,role,city,headline,skills,experience_years,target_field,updated_at')
+      .select('id,full_name,role,city,headline,skills,experience_years,target_field,cv_file_path,cv_file_name,cv_uploaded_at,updated_at')
       .eq('id', state.user.id)
       .maybeSingle();
     state.profile = p.data || null;
@@ -355,10 +355,29 @@
     await loadSession();
     const role = state.profile?.role || 'candidate';
     const name = state.profile?.full_name || state.user.email;
+    const reports = role === 'consultant' ? { data: [] } : await db.from('cv_reports')
+      .select('id,file_path,file_name,created_at,status')
+      .eq('user_id', state.user.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const latestReport = reports.data?.[0] || null;
+    const savedCvPath = state.profile?.cv_file_path || latestReport?.file_path || '';
+    const savedCvName = state.profile?.cv_file_name || latestReport?.file_name || '';
+    const savedCvDate = state.profile?.cv_uploaded_at || latestReport?.created_at || '';
+    const hasCurrentReport = Boolean(latestReport && latestReport.file_path === savedCvPath);
     show(
       '<span class="eyebrow">حسابي</span>' +
       '<h2>' + esc(name) + '</h2>' +
       '<div class="accountCard"><div><b>' + esc(state.user.email) + '</b><small>' + esc(roleLabel(role)) + '</small></div><span>متصل</span></div>' +
+      (role !== 'consultant' ?
+        '<div class="hubItem"><b>' + (savedCvPath ? 'ملفك المهني محفوظ' : (state.profile?.headline ? 'نبذتك المهنية محفوظة' : 'أكمل ملفك المهني')) + '</b>' +
+        (state.profile?.headline ? '<p>' + esc(state.profile.headline) + '</p>' : '<p>بياناتك تبقى مرتبطة بحسابك، وتقدر ترجع لها بعد تسجيل الدخول.</p>') +
+        (savedCvPath ? '<small>السيرة الذاتية: ' + esc(savedCvName || 'ملف محفوظ') + (savedCvDate ? ' · ' + esc(fmtDate(savedCvDate)) : '') + '</small>' : '') +
+        '<div class="hubActions">' +
+          (savedCvPath ? '<button class="secondary" onclick="bttDownloadSavedCv()">تنزيل سيرتي الذاتية</button>' : '') +
+          (hasCurrentReport ? '<button class="primary" onclick="openPanel(\'report\')">عرض آخر تحليل محفوظ</button>' : (savedCvPath ? '<button class="primary" onclick="bttAnalyzeSavedCv()">استكمال تحليل السيرة المحفوظة</button>' : '<button class="primary" onclick="openPanel(\'profile\')">إكمال الملف المهني</button>')) +
+          (savedCvPath ? '<button class="secondary" onclick="openPanel(\'upload\')">رفع سيرة ذاتية جديدة</button>' : '') +
+        '</div></div>' : '') +
       '<div class="actionStack">' +
         (['admin', 'consultant'].includes(role) ? '<button class="primary" onclick="openPanel(\'staff\')">فتح ' + (role === 'admin' ? 'لوحة وليد' : 'مساحة مرام') + '</button>' : '') +
         (role !== 'consultant' ? '<button class="secondary" onclick="openPanel(\'profile\')">الملف المهني</button>' : '') +
@@ -490,6 +509,20 @@
       return status('cvStatus', errText(up.error), 'error');
     }
 
+    const cvUploadedAt = new Date().toISOString();
+    const profileSave = await db.from('profiles').update({
+      cv_file_path: path,
+      cv_file_name: file.name,
+      cv_uploaded_at: cvUploadedAt,
+      updated_at: cvUploadedAt
+    }).eq('id', state.user.id);
+    if (profileSave.error) {
+      await db.storage.from('cv-files').remove([path]);
+      btn.disabled = false;
+      return status('cvStatus', 'رُفع الملف لكن تعذر حفظه في ملفك المهني. حاول مرة أخرى.', 'error');
+    }
+    state.profile = { ...(state.profile || {}), cv_file_path: path, cv_file_name: file.name, cv_uploaded_at: cvUploadedAt };
+
     status('cvStatus', 'جاري تحليل السيرة بالذكاء الاصطناعي... قد يستغرق حتى دقيقة.');
     const ai = await invokeAnalyze(path, file.name);
     if (ai.report) {
@@ -519,6 +552,44 @@
     }
   }
 
+  async function analyzeSavedCv() {
+    if (!(await requireAuth('account'))) return;
+    await loadSession();
+    const path = state.profile?.cv_file_path;
+    const fileName = state.profile?.cv_file_name || path?.split('/').pop() || 'CV';
+    if (!path) return openPanel('upload');
+    show('<span class="eyebrow">استكمال ملفك المهني</span><h2>جاري تحليل السيرة المحفوظة</h2><p id="savedCvStatus" class="status" role="status">جاري التواصل مع خدمة التحليل...</p>');
+    const result = await invokeAnalyze(path, fileName);
+    if (result.report) {
+      state.latestReport = result.report;
+      return renderReport();
+    }
+    show('<span class="eyebrow">السيرة المحفوظة</span><h2>تعذر إكمال التحليل الآن</h2><p class="status error">' + esc(result.message || 'الخدمة غير متاحة حاليًا.') + '</p><p>ملفك ما زال محفوظًا في حسابك. يمكنك المحاولة لاحقًا دون إعادة رفعه.</p><button class="primary" onclick="bttAnalyzeSavedCv()">إعادة المحاولة</button><button class="secondary" onclick="openPanel(\'account\')">العودة إلى حسابي</button>');
+  }
+
+  async function downloadSavedCv() {
+    if (!(await requireAuth('account'))) return;
+    await loadSession();
+    let path = state.profile?.cv_file_path;
+    let fileName = state.profile?.cv_file_name || 'CV';
+    if (!path) {
+      const latest = await db.from('cv_reports').select('file_path,file_name').eq('user_id', state.user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+      path = latest.data?.file_path;
+      fileName = latest.data?.file_name || fileName;
+    }
+    if (!path) return alert('لا توجد سيرة ذاتية محفوظة لهذا الحساب بعد.');
+    const downloaded = await db.storage.from('cv-files').download(path);
+    if (downloaded.error || !downloaded.data) return alert('تعذر تنزيل السيرة الذاتية المحفوظة.');
+    const url = URL.createObjectURL(downloaded.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function getLatestReport() {
     if (state.latestReport) return state.latestReport;
     if (!(await requireAuth('report'))) return null;
@@ -534,8 +605,9 @@
 
   // Shows Maram's/Admin's APPROVED guidance inside the report and the plan, so her expertise
   // actually shapes what the user sees. Honest empty state when nothing is approved yet.
-  async function knowledgeBlock(categories, heading) {
-    const rows = (await loadApprovedKnowledge()).filter((k) => categories.includes(k.category)).slice(0, 4);
+  async function knowledgeBlock(categories, heading, excludedTitles = []) {
+    const excluded = new Set(excludedTitles);
+    const rows = (await loadApprovedKnowledge()).filter((k) => categories.includes(k.category) && !excluded.has(String(k.title || '').trim())).slice(0, 4);
     if (!rows.length) {
       return '<h3>' + esc(heading) + '</h3><p class="testNotice">لا توجد مرجعية معتمدة لهذا القسم بعد. عند اعتماد مواد مرام ستظهر هنا تلقائيًا.</p>';
     }
@@ -580,7 +652,7 @@
         '<div><b>تحتاج تطوير</b><ul>' + li(a.gaps) + '</ul></div>' +
         '<div><b>المسار المستهدف</b><p>' + esc(a.target || 'غير محدد') + '</p></div>' +
       '</div>' +
-      (await knowledgeBlock(['cv', 'recruitment'], 'توصيات مرام للسيرة الذاتية')) +
+      (await knowledgeBlock(['cv', 'recruitment'], 'توصيات مرام للسيرة الذاتية', ['الخبرة المهنية'])) +
       '<p class="metaLine">الملف: ' + esc(report.file_name || 'CV') + ' • ' + esc(fmtDate(report.created_at)) + '</p>' +
       '<button class="primary" onclick="openPanel(\'plan\')">بناء خطة التطوير</button>'
     );
@@ -1206,6 +1278,8 @@
   window.openPanel = openPanel;
   window.closePanel = closePanel;
   window.bttSignOut = signOut;
+  window.bttAnalyzeSavedCv = analyzeSavedCv;
+  window.bttDownloadSavedCv = downloadSavedCv;
   window.bttApplyJob = applyJob;
   window.bttFeedbackStatus = feedbackStatus;
   window.bttKnowledgeStatus = knowledgeStatus;
