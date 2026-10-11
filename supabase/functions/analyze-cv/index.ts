@@ -84,7 +84,7 @@ const strList = (v: unknown, max: number, maxLen = 400): string[] =>
   Array.isArray(v) ? v.map((x) => String(x ?? "").trim().slice(0, maxLen)).filter(Boolean).slice(0, max) : [];
 
 export function buildGuidance(rows: Array<{ id: string; title: string; category: string; body: string; source_role: string }>) {
-  const sorted = [...rows].sort((a, b) => {
+  const sorted = rows.filter((r) => String(r.title || "").trim() !== "الخبرة المهنية").sort((a, b) => {
     const ia = CATEGORY_ORDER.indexOf(a.category), ib = CATEGORY_ORDER.indexOf(b.category);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
   });
