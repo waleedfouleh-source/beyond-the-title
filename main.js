@@ -436,21 +436,30 @@
 
   async function renderUpload() {
     if (!(await requireAuth('upload'))) return;
+    state.selectedFile = null;
     show(
-      '<span class="eyebrow">السيرة الذاتية</span><h2>ارفع الـCV</h2>' +
-      '<p class="testNotice">ملفك محفوظ بشكل خاص بحسابك. التحليل بالذكاء الاصطناعي يقرأ محتوى السيرة (PDF أو DOCX) ويطبّق عليها مرجعية مرام المعتمدة.</p>' +
-      '<label class="drop fileDrop" for="cvFile"><h3 id="fileTitle">اضغط لاختيار الملف</h3><p id="fileMeta">PDF أو DOCX • حتى 5MB</p><input id="cvFile" type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>' +
-      '<label class="consentLine"><input type="checkbox" id="cvConsent"> أوافق على إرسال محتوى سيرتي إلى خدمة Google Gemini لتحليلها. في النسخة المجانية قد تستخدم Google المحتوى لتحسين خدماتها، لذا لا ترفع سيرة تحتوي معلومات لا تريد مشاركتها.</label>' +
-      '<button class="primary fullBtn" id="cvUploadButton" type="button">رفع الملف وتحليل السيرة</button>' +
-      '<p id="cvStatus" class="status"></p>'
+      '<div class="cvUploadView">' +
+      '<span class="eyebrow">خطوتك التالية · السيرة الذاتية</span>' +
+      '<h2>حلّل سيرتك الذاتية</h2>' +
+      '<p class="cvUploadIntro">ارفع سيرتك بصيغة PDF أو DOCX، وسنحلل محتواها لنساعدك على اكتشاف نقاط القوة وفرص التطوير.</p>' +
+      '<div class="cvUploadCard">' +
+      '<div class="cvUploadIcon" aria-hidden="true">▤</div>' +
+      '<h3 id="fileTitle">اختر ملف السيرة الذاتية</h3>' +
+      '<p id="fileMeta">PDF أو DOCX · الحد الأقصى 5 ميجابايت</p>' +
+      '<input id="cvFile" class="cvNativeFile" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="اختيار ملف السيرة الذاتية">' +
+      '<label class="cvChooseBtn" for="cvFile">استعراض الملفات</label>' +
+      '</div>' +
+      '<div class="cvPrivacy"><strong>خصوصية ملفك</strong><p>يُحفظ الملف في مساحة خاصة بحسابك. عند بدء التحليل يُرسل محتوى السيرة إلى Google Gemini لمعالجته.</p></div>' +
+      '<label class="cvConsentRow" for="cvConsent"><input type="checkbox" id="cvConsent"><span>أوافق على إرسال محتوى سيرتي إلى Google Gemini لتحليلها. في النسخة المجانية قد تستخدم Google المحتوى لتحسين خدماتها؛ لا ترفع معلومات لا ترغب بمشاركتها.</span></label>' +
+      '<button class="primary cvSubmit" id="cvUploadButton" type="button">رفع الملف وتحليل السيرة</button>' +
+      '<p id="cvStatus" class="status" role="status" aria-live="polite"></p>' +
+      '</div>'
     );
-
     $('cvFile').onchange = (e) => {
       state.selectedFile = e.target.files?.[0] || null;
-      if (state.selectedFile) {
-        $('fileTitle').textContent = state.selectedFile.name;
-        $('fileMeta').textContent = (state.selectedFile.size / 1024 / 1024).toFixed(2) + ' MB';
-      }
+      $('fileTitle').textContent = state.selectedFile ? state.selectedFile.name : 'اختر ملف السيرة الذاتية';
+      $('fileMeta').textContent = state.selectedFile ? (state.selectedFile.size / 1024 / 1024).toFixed(2) + ' MB · جاهز للتحليل' : 'PDF أو DOCX · الحد الأقصى 5 ميجابايت';
+      $('cvUploadButton').textContent = state.selectedFile ? 'تحليل السيرة الذاتية الآن' : 'رفع الملف وتحليل السيرة';
     };
     $('cvUploadButton').onclick = uploadCv;
   }
