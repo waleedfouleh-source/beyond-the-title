@@ -477,8 +477,8 @@ create policy "advisor own insert"
 on public.advisor_messages for insert to authenticated
 with check (user_id=(select auth.uid()));
 
--- Questions submitted to the human advisor inbox. Users can see only their own
--- questions and replies; only admins can review and answer questions.
+-- Questions submitted to Maram's private consultant inbox. Users can see their
+-- own questions/replies. The legacy "admin_reply" column preserves old responses.
 create table if not exists public.advisor_questions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -495,20 +495,24 @@ create index if not exists idx_advisor_questions_user_created
   on public.advisor_questions(user_id, created_at desc);
 alter table public.advisor_questions enable row level security;
 grant select, insert on public.advisor_questions to authenticated;
-grant update on public.advisor_questions to authenticated;
+-- Only allow consultants to update workflow/reply fields (not question or user_id).
+revoke update on public.advisor_questions from authenticated;
+grant update(status, admin_reply, replied_at, updated_at) on public.advisor_questions to authenticated;
 drop policy if exists "advisor questions own read or admin" on public.advisor_questions;
-create policy "advisor questions own read or admin"
+drop policy if exists "advisor questions own or consultant read" on public.advisor_questions;
+create policy "advisor questions own or consultant read"
 on public.advisor_questions for select to authenticated
-using (user_id=(select auth.uid()) or private.is_admin());
+using (user_id=(select auth.uid()) or (select private.is_consultant()));
 drop policy if exists "advisor questions own insert" on public.advisor_questions;
 create policy "advisor questions own insert"
 on public.advisor_questions for insert to authenticated
 with check (user_id=(select auth.uid()) and status='new' and admin_reply is null and replied_at is null);
 drop policy if exists "advisor questions admin update" on public.advisor_questions;
-create policy "advisor questions admin update"
+drop policy if exists "advisor questions consultant update" on public.advisor_questions;
+create policy "advisor questions consultant update"
 on public.advisor_questions for update to authenticated
-using (private.is_admin())
-with check (private.is_admin());
+using ((select private.is_consultant()))
+with check ((select private.is_consultant()));
 
 create table if not exists public.company_requests (
   id uuid primary key default gen_random_uuid(),
