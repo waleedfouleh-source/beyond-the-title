@@ -771,12 +771,12 @@
     const rows = history.data || [];
     show(
       '<span class="eyebrow">مستشار مرام</span><h2>شو حابب تعرف عن مسارك؟</h2>' +
-      '<p class="testNotice">اكتب سؤالك وسيراجعه فريق المنصة، وسنرسل لك الإجابة هنا في أقرب وقت. أسئلتك وردودنا خاصة بحسابك.</p>' +
+      '<p class="testNotice">اكتب سؤالك وسيصل مباشرة إلى مساحة مرام هواري لمراجعته والرد عليه. أسئلتك وردودنا خاصة بحسابك.</p>' +
       '<div class="chat" id="advisorChat">' +
         (rows.length ? rows.map((m) =>
           '<div class="bubble me">' + esc(m.question) + '</div>' +
           (m.admin_reply
-            ? '<div class="bubble">' + esc(m.admin_reply) + '<small>رد فريق المنصة' + (m.replied_at ? ' · ' + esc(fmtDate(m.replied_at)) : '') + '</small></div>'
+            ? '<div class="bubble">' + esc(m.admin_reply) + '<small>الرد الاستشاري' + (m.replied_at ? ' · ' + esc(fmtDate(m.replied_at)) : '') + '</small></div>'
             : '<div class="bubble">' + (m.status === 'in_review' ? 'سؤالك قيد المراجعة.' : 'تم استلام سؤالك، وسنراجعه ونجيبك في أقرب وقت.') + '<small>بانتظار الرد</small></div>')
         ).join('') : '<div class="bubble">اسألني عن الوظائف، السيرة الذاتية، المقابلات أو المهارات.</div>') +
       '</div>' +
@@ -807,7 +807,7 @@
         status: 'new'
       });
       if (saved.error) throw saved.error;
-      await renderAdvisor('وصل سؤالك. سنراجعه ونجيبك في أقرب وقت.');
+      await renderAdvisor('وصل سؤالك إلى مرام. ستراجعه وتجيبك في أقرب وقت.');
     } catch (error) {
       status('advisorStatus', errText(error), 'error');
       btn.disabled = false;
@@ -937,18 +937,16 @@
   }
 
   async function renderAdmin() {
-    const [feedback, knowledge, companyRequests, profiles, jobs, courses, advisorQuestions] = await Promise.all([
+    const [feedback, knowledge, companyRequests, profiles, jobs, courses] = await Promise.all([
       db.from('consultant_feedback').select('id,title,body,feedback_type,priority,status,admin_note,created_at').order('created_at', { ascending: false }).limit(100),
       db.from('knowledge').select('id,title,category,body,status,source_role,created_at,approved_at,created_by').order('created_at', { ascending: false }).limit(100),
       db.from('company_requests').select('id,company_name,work_email,job_title,requirements,status,created_at').order('created_at', { ascending: false }).limit(100),
       db.from('profiles').select('id,full_name,role,city,created_at').order('created_at', { ascending: false }).limit(100),
       db.from('jobs').select('id,title,company,location,status,created_at').order('created_at', { ascending: false }).limit(100),
-      db.from('courses').select('id,title,url,status,created_at').order('created_at', { ascending: false }).limit(100),
-      db.from('advisor_questions').select('id,user_id,question,status,admin_reply,created_at,replied_at').order('created_at', { ascending: false }).limit(100)
+      db.from('courses').select('id,title,url,status,created_at').order('created_at', { ascending: false }).limit(100)
     ]);
 
-    const problems = [feedback.error, knowledge.error, companyRequests.error, profiles.error, jobs.error, courses.error, advisorQuestions.error].filter(Boolean);
-    const profileById = new Map((profiles.data || []).map((x) => [x.id, x]));
+    const problems = [feedback.error, knowledge.error, companyRequests.error, profiles.error, jobs.error, courses.error].filter(Boolean);
 
     show(
       '<span class="eyebrow">لوحة وليد</span><h2>إدارة المنصة</h2>' +
@@ -958,19 +956,8 @@
         '<div><b>' + (profiles.data || []).length + '</b><p>مستخدمون</p></div>' +
         '<div><b>' + (feedback.data || []).filter((x) => x.status === 'new').length + '</b><p>ملاحظات جديدة</p></div>' +
         '<div><b>' + (companyRequests.data || []).filter((x) => x.status === 'new').length + '</b><p>طلبات شركات جديدة</p></div>' +
-        '<div><b>' + (advisorQuestions.data || []).filter((x) => x.status !== 'answered').length + '</b><p>أسئلة بانتظار الرد</p></div>' +
       '</div>' +
       '<button class="secondary fullBtn" onclick="openPanel(\'system-check\')">تشغيل فحص النظام الآن</button>' +
-
-      '<h3>أسئلة المستخدمين</h3><p>الأسئلة تصل إلى هذا الصندوق، ويمكنك كتابة الرد ليظهر لصاحب السؤال داخل حسابه.</p><div class="listStack">' +
-        ((advisorQuestions.data || []).length ? advisorQuestions.data.map((x) => {
-          const profile = profileById.get(x.user_id);
-          const statusText = { new: 'جديد', in_review: 'قيد المراجعة', answered: 'تم الرد' }[x.status] || x.status;
-          return '<div class="hubItem"><b>' + esc(profile?.full_name || 'مستخدم مسجل') + '</b><small>' + esc(statusText) + ' · ' + esc(fmtDate(x.created_at)) + '</small><p>' + esc(x.question) + '</p>' +
-            '<textarea id="advisor-reply-' + x.id + '" maxlength="3000" placeholder="اكتب ردك هنا؛ سيظهر للمستخدم عند فتحه مستشار مرام">' + esc(x.admin_reply || '') + '</textarea>' +
-            '<div class="hubActions"><button class="secondary" onclick="bttAdvisorQuestionStatus(\'' + x.id + '\',\'in_review\')">قيد المراجعة</button><button class="primary" onclick="bttAdvisorQuestionReply(\'' + x.id + '\')">حفظ وإرسال الرد</button></div></div>';
-        }).join('') : '<p>لا توجد أسئلة حتى الآن.</p>') +
-      '</div>' +
 
       '<h3>إضافة مرجعية إدارية</h3>' +
       '<form class="form staffForm" id="adminKnowledgeForm">' +
@@ -1143,32 +1130,42 @@
     renderAdmin();
   }
 
+  // Preserve earlier answers in the legacy admin_reply column.
   async function advisorQuestionStatus(id, newStatus) {
-    const r = await db.from('advisor_questions').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', id);
-    if (r.error) return alert(errText(r.error));
-    renderAdmin();
+    if (state.profile?.role !== 'consultant' || newStatus !== 'in_review') return;
+    const { data, error } = await db.from('advisor_questions')
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', id).select('id').maybeSingle();
+    if (error || !data) return alert(errText(error, 'لم يتم تحديث السؤال. تحققي من صلاحيات حساب مرام.'));
+    renderConsultant();
   }
 
   async function advisorQuestionReply(id) {
+    if (state.profile?.role !== 'consultant') return;
     const reply = $('advisor-reply-' + id)?.value.trim();
-    if (!reply) return alert('اكتب الرد أولًا.');
+    if (!reply) return alert('اكتبي الرد أولًا.');
     const now = new Date().toISOString();
-    const r = await db.from('advisor_questions').update({
+    const { data, error } = await db.from('advisor_questions').update({
       admin_reply: reply,
       status: 'answered',
       replied_at: now,
       updated_at: now
-    }).eq('id', id);
-    if (r.error) return alert(errText(r.error));
-    renderAdmin();
+    }).eq('id', id).select('id').maybeSingle();
+    if (error || !data) return alert(errText(error, 'لم يتم إرسال الرد. تحققي من صلاحيات حساب مرام.'));
+    renderConsultant();
   }
 
   async function renderConsultant() {
-    const [feedback, knowledge] = await Promise.all([
+    const [feedback, knowledge, advisorQuestions] = await Promise.all([
       db.from('consultant_feedback').select('id,title,body,feedback_type,priority,status,admin_note,created_at').eq('consultant_id',state.user.id).order('created_at',{ascending:false}).limit(100),
-      db.from('knowledge').select('id,title,category,body,status,created_at,approved_at').eq('created_by',state.user.id).order('created_at',{ascending:false}).limit(100)
+      db.from('knowledge').select('id,title,category,body,status,created_at,approved_at').eq('created_by',state.user.id).order('created_at',{ascending:false}).limit(100),
+      db.from('advisor_questions').select('id,user_id,question,status,admin_reply,created_at,replied_at').order('created_at',{ascending:false}).limit(100)
     ]);
-    const issues=[feedback.error,knowledge.error].filter(Boolean), notes=feedback.data||[], articles=knowledge.data||[];
+    const issues=[feedback.error,knowledge.error,advisorQuestions.error].filter(Boolean), notes=feedback.data||[], articles=knowledge.data||[];
+    const questions=(advisorQuestions.data||[]).slice().sort((a,b)=>
+      Number(a.status === 'answered')-Number(b.status === 'answered') ||
+      new Date(b.created_at)-new Date(a.created_at));
+    const openQuestions=questions.filter(x=>x.status!=='answered');
     const pending=articles.filter(x=>x.status==='draft'), approved=articles.filter(x=>x.status==='approved');
     const labels={new:'جديدة',reviewed:'تمت المراجعة',accepted:'معتمدة',implemented:'تم التنفيذ',rejected:'مرفوضة',draft:'بانتظار اعتماد وليد',approved:'معتمدة',paused:'موقوفة'};
     const cats={cv:'السيرة الذاتية',interview:'المقابلات',development:'التطوير والتدريب',recruitment:'التوظيف',other:'أخرى'};
@@ -1177,9 +1174,21 @@
     show(
       '<div class="maramDashboard"><div class="maramWelcome"><span class="eyebrow">مساحتك المهنية الخاصة</span><h2>أهلًا مرام 👋</h2><p>خبرتك المهنية تساعد الباحثين عن عمل. أضيفي توجيهاتك، تابعي اعتمادها، وأرسلي ملاحظاتك لوليد.</p><small>'+esc(state.user.email)+' · مستشارة مهنية</small></div>'+
       (issues.length?'<p class="status error">تعذر تحميل بعض البيانات: '+esc(issues.map(errText).join(' | '))+'</p>':'')+
-      '<div class="maramStats"><div><b>'+articles.length+'</b><span>مواد أضفتها</span></div><div><b>'+pending.length+'</b><span>بانتظار الاعتماد</span></div><div><b>'+approved.length+'</b><span>مواد معتمدة</span></div><div><b>'+notes.length+'</b><span>ملاحظاتي</span></div></div>'+
-      '<nav class="maramNav"><a href="#maram-add">أضيفي خبرتك</a><a href="#maram-feedback">صندوق التوصيات</a><a href="#maram-pending">بانتظار الاعتماد</a><a href="#maram-approved">المواد المعتمدة</a><a href="#maram-followup">متابعة ملاحظاتي</a></nav>'+
-      '<section class="maramSection" id="maram-add"><h3>أضيفي خبرتك المهنية</h3><p>تُحفظ المادة كمسودة. لا تُستخدم في المنصة قبل مراجعة وليد واعتمادها.</p><form class="form staffForm" id="consultantKnowledgeForm"><label for="cKTitle">عنوان المادة</label><input id="cKTitle" required maxlength="180" placeholder="مثال: كيف تكتب إنجازاتك بالأرقام؟"><label for="cKCategory">المجال</label><select id="cKCategory"><option value="cv">السيرة الذاتية</option><option value="interview">المقابلات</option><option value="development">التطوير والتدريب</option><option value="recruitment">التوظيف</option><option value="other">أخرى</option></select><label for="cKBody">التوجيه المهني</label><textarea id="cKBody" required minlength="20" placeholder="اكتبي نصائح عملية وأمثلة واضحة..."></textarea><button class="primary" type="submit">إرسال المادة للمراجعة</button></form><p id="consultantKnowledgeStatus" class="status" role="status"></p></section>'+
+      '<div class="maramStats"><div><b>'+articles.length+'</b><span>مواد أضفتها</span></div><div><b>'+pending.length+'</b><span>بانتظار الاعتماد</span></div><div><b>'+approved.length+'</b><span>مواد معتمدة</span></div><div><b>'+openQuestions.length+'</b><span>أسئلة بانتظار الرد</span></div></div>'+
+      '<nav class="maramNav"><a href="#maram-questions">أسئلة المستخدمين ('+openQuestions.length+')</a><a href="#maram-add">أضيفي خبرتك</a><a href="#maram-feedback">صندوق التوصيات</a><a href="#maram-pending">بانتظار الاعتماد</a><a href="#maram-approved">المواد المعتمدة</a><a href="#maram-followup">متابعة ملاحظاتي</a></nav>'+
+      '<section class="maramSection" id="maram-questions"><h3>أسئلة المستخدمين ('+questions.length+')</h3><p>هذا الصندوق خاص بمرام. الأسئلة الجديدة والسابقة تظهر هنا، والرد يُعرض للمستخدم في حسابه.</p>' +
+       (questions.length ? '<div class="listStack">' + questions.map((x) => {
+         const stateName = { new: 'جديد', in_review: 'قيد المراجعة', answered: 'تم الرد' }[x.status] || x.status;
+         return '<div class="hubItem"><b>سؤال من مستخدم #' + esc(String(x.user_id).slice(0,8)) + '</b><small>' + esc(stateName) + ' · ' + esc(fmtDate(x.created_at)) + '</small><p>' + esc(x.question) + '</p>' +
+           (x.admin_reply ? '<p><b>الرد المسجل:</b> ' + esc(x.admin_reply) + '</p>' : '') +
+           '<label for="advisor-reply-' + x.id + '">الرد على المستخدم</label>' +
+           '<textarea id="advisor-reply-' + x.id + '" maxlength="3000" placeholder="اكتبي ردك هنا؛ سيظهر للمستخدم في حسابه">' + esc(x.admin_reply || '') + '</textarea>' +
+           '<div class="hubActions">' +
+             (x.status === 'new' ? '<button class="secondary" onclick="bttAdvisorQuestionStatus(\'' + x.id + '\',\'in_review\')">قيد المراجعة</button>' : '') +
+             '<button class="primary" onclick="bttAdvisorQuestionReply(\'' + x.id + '\')">' + (x.status === 'answered' ? 'تعديل الرد' : 'حفظ وإرسال الرد') + '</button></div></div>';
+       }).join('') + '</div>' : '<p class="maramEmpty">لا توجد أسئلة حتى الآن.</p>') +
+       '</section>' +
+       '<section class="maramSection" id="maram-add"><h3>أضيفي خبرتك المهنية</h3><p>تُحفظ المادة كمسودة. لا تُستخدم في المنصة قبل مراجعة وليد واعتمادها.</p><form class="form staffForm" id="consultantKnowledgeForm"><label for="cKTitle">عنوان المادة</label><input id="cKTitle" required maxlength="180" placeholder="مثال: كيف تكتب إنجازاتك بالأرقام؟"><label for="cKCategory">المجال</label><select id="cKCategory"><option value="cv">السيرة الذاتية</option><option value="interview">المقابلات</option><option value="development">التطوير والتدريب</option><option value="recruitment">التوظيف</option><option value="other">أخرى</option></select><label for="cKBody">التوجيه المهني</label><textarea id="cKBody" required minlength="20" placeholder="اكتبي نصائح عملية وأمثلة واضحة..."></textarea><button class="primary" type="submit">إرسال المادة للمراجعة</button></form><p id="consultantKnowledgeStatus" class="status" role="status"></p></section>'+
       '<section class="maramSection" id="maram-feedback"><h3>صندوق التوصيات والملاحظات</h3><p>أرسلي اقتراحًا أو تصحيحًا إلى وليد وتابعي حالته والرد عليه.</p><form class="form staffForm" id="consultantFeedbackForm"><label for="fType">نوع الرسالة</label><select id="fType"><option value="suggestion">اقتراح</option><option value="observation">ملاحظة</option><option value="data">بيانات مفيدة</option><option value="correction">تصحيح</option><option value="feature_request">طلب تطوير</option></select><label for="fPriority">الأولوية</label><select id="fPriority"><option value="normal">عادية</option><option value="high">عالية</option><option value="low">منخفضة</option></select><label for="fTitle">العنوان</label><input id="fTitle" required maxlength="180" placeholder="عنوان مختصر"><label for="fBody">التفاصيل</label><textarea id="fBody" required placeholder="اشرحي الملاحظة أو التوصية..."></textarea><button class="primary" type="submit">إرسال إلى وليد</button></form><p id="consultantFeedbackStatus" class="status" role="status"></p></section>'+
       '<section class="maramSection" id="maram-pending"><h3>بانتظار اعتماد وليد ('+pending.length+')</h3>'+list(pending,'knowledge','لا توجد مواد بانتظار الاعتماد.')+'</section>'+
       '<section class="maramSection" id="maram-approved"><h3>المواد المعتمدة ('+approved.length+')</h3><p>هذه المواد متاحة لمرجعية المنصة وتحليل السير ومستشار مرام بحسب صلتها بالمحتوى؛ اعتماد المادة لا يعني استخدامها في كل تحليل.</p>'+list(approved,'knowledge','لا توجد مواد معتمدة بعد.')+'</section>'+
