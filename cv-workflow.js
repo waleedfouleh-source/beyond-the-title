@@ -206,7 +206,7 @@
     const cv=report?.analysis?.cv_coach?.revised_cv;
     if (!cv) return '<div class="cvVersionCard"><h4>السيرة المعدلة بواسطة AI</h4>'+
       '<p>لم تكتمل النسخة المعدلة بعد. تظهر هنا تلقائيًا بعد إنهاء الأسئلة وإنشاء السيرة.</p>'+
-      (report?.id ? button("enhance","إنشاء/استكمال السيرة المعدلة") : "")+'</div>';
+      (report?.id && window.__bttCvViewer === "candidate" ? button("enhance","إنشاء/استكمال السيرة المعدلة") : "")+'</div>';
     return '<div class="cvVersionCard"><h4>السيرة المعدلة بواسطة AI</h4>'+
       '<p>النسخة التي أنشأها الذكاء الاصطناعي محفوظة في حساب المتقدم.</p>'+
       '<details open><summary>عرض السيرة المعدلة</summary>'+cvHtml(cv)+'</details>'+
@@ -284,6 +284,7 @@
     if(reports.error || prof.error) {
       slot.innerHTML='<p class="status error">تعذر عرض ملفاتك المحفوظة الآن.</p>';return;
     }
+    window.__bttCvViewer = "candidate";
     const report=reports.data?.[0], profile=prof.data||{};
     const path=profile.cv_file_path || report?.file_path;
     const name=profile.cv_file_name || report?.file_name;
@@ -326,6 +327,7 @@
       slot.innerHTML='<h3>السير الذاتية والمتقدمون</h3><p class="status error">تعذر عرض ملفات المتقدمين. تأكد من تطبيق تحديث صلاحيات Supabase الخاص بلوحة مرام ووليد.</p>';
       return;
     }
+    window.__bttCvViewer = role;
     const byId=new Map();
     (reports.data||[]).forEach(r=>{if(!byId.has(r.user_id)) byId.set(r.user_id,r);});
     const people=(profiles.data||[]).filter(p=>p.cv_file_path || byId.has(p.id) || (questions.data||[]).some(q=>q.user_id===p.id));
