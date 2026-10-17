@@ -54,3 +54,11 @@
 .cvQuestionDetails p{white-space:pre-wrap;overflow-wrap:anywhere}
 .cvPdfFrame{width:100%;height:410px;border:1px solid #d9e5e1;border-radius:8px;margin-top:12px;background:white}
 @media(max-width:720px){.cvDualCards{grid-template-columns:1fr}.cvLibrarySection,.cvMyLibrary{padding:12px}.cvPdfFrame{height:350px}}
+
+/* Public maintenance notice: shown only while maintenance.json.active is true */
+.maintenanceNotice{position:sticky;top:82px;z-index:21;display:flex;align-items:center;gap:12px;padding:13px 7%;background:#fff3d9;border-block:1px solid #e9cd91;color:#5b4218;box-shadow:0 4px 12px #102b3f10}
+.maintenanceNotice[hidden]{display:none!important}
+.maintenanceGlyph{font-size:25px;line-height:1}
+.maintenanceNotice strong{display:block;font-size:15px}
+.maintenanceNotice p{margin:3px 0 0;font-size:13px;line-height:1.7;color:#604a23}
+@media(max-width:520px){.maintenanceNotice{padding:12px 5%;align-items:flex-start}.maintenanceNotice p{font-size:12px}}
