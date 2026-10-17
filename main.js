@@ -174,7 +174,7 @@
     const target = state.afterAuth;
     state.afterAuth = null;
     if (target) return openPanel(target);
-    if ((state.profile?.role || 'candidate') === 'candidate') return openPanel('profile');
+    if ((state.profile?.role || 'candidate') === 'candidate') return openPanel('account');
     if (['admin', 'consultant'].includes(state.profile?.role)) return openPanel('staff');
     return openPanel('account');
   }
@@ -449,7 +449,7 @@
       '<input id="cvFile" class="cvNativeFile" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="اختيار ملف السيرة الذاتية">' +
       '<label class="cvChooseBtn" for="cvFile">استعراض الملفات</label>' +
       '</div>' +
-      '<div class="cvPrivacy"><strong>خصوصية ملفك</strong><p>يُحفظ الملف في مساحة خاصة بحسابك. عند بدء التحليل يُرسل محتوى السيرة إلى Google Gemini لمعالجته.</p></div>' +
+      '<div class="cvPrivacy"><strong>خصوصية ملفك</strong><p>يُحفظ الملف في مساحة خاصة بحسابك، ويمكن لمرام ووليد الاطلاع على السيرة الأصلية والنسخة المعدلة بغرض المراجعة المهنية. عند بدء التحليل يُرسل محتوى السيرة إلى Google Gemini لمعالجته بعد موافقتك.</p></div>' +
       '<label class="cvConsentRow" for="cvConsent"><input type="checkbox" id="cvConsent"><span>أوافق على إرسال محتوى سيرتي إلى Google Gemini لتحليلها. في النسخة المجانية قد تستخدم Google المحتوى لتحسين خدماتها؛ لا ترفع معلومات لا ترغب بمشاركتها.</span></label>' +
       '<button class="primary cvSubmit" id="cvUploadButton" type="button">رفع الملف وتحليل السيرة</button>' +
       '<p id="cvStatus" class="status" role="status" aria-live="polite"></p>' +
