@@ -275,7 +275,8 @@
   }
   async function renderMyCv(slot) {
     const auth=await checkAuth();
-    if(!slot.isConnected || !auth || auth.role==="consultant" || auth.role==="admin") return;
+    if(!slot.isConnected) return;
+    if(!auth || auth.role==="consultant" || auth.role==="admin") { slot.remove(); return; }
     const [reports, prof] = await Promise.all([
       db.from("cv_reports").select("id,file_path,file_name,analysis,created_at").eq("user_id",auth.user.id).order("created_at",{ascending:false}).limit(1),
       db.from("profiles").select("full_name,headline,cv_file_path,cv_file_name,cv_uploaded_at").eq("id",auth.user.id).maybeSingle()
