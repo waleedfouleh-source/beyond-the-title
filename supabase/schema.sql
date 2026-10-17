@@ -215,9 +215,14 @@ grant select,insert,update,delete on public.cv_reports to authenticated;
 grant select,insert,update,delete on public.applications to authenticated;
 
 drop policy if exists "profile read own or admin" on public.profiles;
-create policy "profile read own or admin"
+drop policy if exists "profile own or staff CV reviewers" on public.profiles;
+create policy "profile own or staff CV reviewers"
 on public.profiles for select to authenticated
-using (id=(select auth.uid()) or private.is_admin());
+using (
+  id=(select auth.uid())
+  or (select private.is_admin())
+  or (role='candidate' and (select private.is_consultant()))
+);
 
 drop policy if exists "profile insert own candidate" on public.profiles;
 create policy "profile insert own candidate"
@@ -395,11 +400,13 @@ using (private.is_admin())
 with check (private.is_admin());
 
 drop policy if exists "reports private" on public.cv_reports;
-create policy "reports private"
+drop policy if exists "reports own or staff CV reviewers" on public.cv_reports;
+create policy "reports own or staff CV reviewers"
 on public.cv_reports for select to authenticated
 using (
   user_id=(select auth.uid())
-  or private.is_admin()
+  or (select private.is_admin())
+  or (select private.is_consultant())
 );
 
 drop policy if exists "reports delete own" on public.cv_reports;
@@ -502,7 +509,7 @@ drop policy if exists "advisor questions own read or admin" on public.advisor_qu
 drop policy if exists "advisor questions own or consultant read" on public.advisor_questions;
 create policy "advisor questions own or consultant read"
 on public.advisor_questions for select to authenticated
-using (user_id=(select auth.uid()) or (select private.is_consultant()));
+using (user_id=(select auth.uid()) or (select private.is_consultant()) or (select private.is_admin()));
 drop policy if exists "advisor questions own insert" on public.advisor_questions;
 create policy "advisor questions own insert"
 on public.advisor_questions for insert to authenticated
@@ -578,9 +585,31 @@ create policy "cv upload own folder"
 on storage.objects for insert to authenticated
 with check(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
 drop policy if exists "cv read own folder" on storage.objects;
-create policy "cv read own folder"
+drop policy if exists "cv read own or staff review" on storage.objects;
+create policy "cv read own or staff review"
 on storage.objects for select to authenticated
-using(bucket_id='cv-files' and (storage.foldername(name))[1]=(select auth.uid())::text);
+using (
+  bucket_id='cv-files' and (
+    (storage.foldername(name))[1]=(select auth.uid())::text
+    or (
+      ((select private.is_admin()) or (select private.is_consultant()))
+      and (
+        exists (
+          select 1 from public.profiles p
+          where p.role='candidate'
+            and p.id::text=(storage.foldername(name))[1]
+            and p.cv_file_path=storage.objects.name
+        )
+        or exists (
+          select 1 from public.cv_reports r
+          join public.profiles p on p.id=r.user_id and p.role='candidate'
+          where r.user_id::text=(storage.foldername(name))[1]
+            and r.file_path=storage.objects.name
+        )
+      )
+    )
+  )
+);
 drop policy if exists "cv update own folder" on storage.objects;
 create policy "cv update own folder"
 on storage.objects for update to authenticated
